@@ -11,6 +11,19 @@ library(umap)
 library(tidyr)
 
 # Functions for QC
+# Function to filter a data frame by a specified column and value
+filter_by_column_value = function(data, column, value) {
+  filtered_data = data[data[[column]] == value, ]
+  return(filtered_data)}
+
+# Function to divide a df into sub-df based on a column
+divide_df_by_column = function(data, column) {
+  unique_values = unique(data[[column]])
+  for (value in unique_values) {
+    new_var_name = paste0(deparse(substitute(data)), '_', column, value)
+    sub_data = data[data[[column]] == value, ]
+    assign(new_var_name, sub_data, envir = .GlobalEnv)}}
+
 # Function to calculate warning counts for samples
 calculate_sample_warnings = function(data) {
   data %>%
@@ -47,7 +60,6 @@ filter_samples = function(data, sample_warning_counts) {
       filter(., sample_warn_percentage <= 50)
     } %>%
     select(-sample_warn_count, -sample_total_count, -sample_warn_percentage)
-  
   return(filtered_data)}
 
 # Function to filter proteins with more than 50% warnings
@@ -62,70 +74,19 @@ filter_proteins = function(data, protein_warning_counts) {
       filter(., protein_warn_percentage <= 50)
     } %>%
     select(-protein_warn_count, -protein_total_count, -protein_warn_percentage)
-  
   return(filtered_data)}
 
-# Function to identify proteins with multiple assays
-identify_multiple_assay_proteins = function(data, protein_id_col, assay_col) {
-  data %>%
-    group_by(across(all_of(protein_id_col))) %>%
-    filter(n_distinct(.data[[assay_col]]) > 1)}
-
-# Function to calculate LOD
-# Assumption: blank is within the data with known IDs --> input IDs to define blank
-calculate_lod = function(data, blank_ids, id_col, npx_col, protein_id_col) {
-  blank_data = data %>%
-    filter(.data[[id_col]] %in% blank_ids)
-  lod_table = blank_data %>%
-    group_by(across(all_of(protein_id_col))) %>%
-    summarize(
-      mean_blank = mean(.data[[npx_col]], na.rm = TRUE),
-      sd_blank = sd(.data[[npx_col]], na.rm = TRUE),
-      lod = mean_blank + 3 * sd_blank,  
-      .groups = 'drop')
-  return(lod_table)}
-
-# Function to calculate LOD with long format (Olink target)
-# Assumption: blank are some rows within the data with known IDs
-calculate_lod_wide = function(data, id_col, blank_ids, exclude_cols) {
-  blank_data = data %>%
-    filter(.data[[id_col]] %in% blank_ids)
-  protein_data = blank_data %>%
-    select(-all_of(c(id_col, exclude_cols)))
-  lod_table = protein_data %>%
-    summarise(across(
-      everything(),
-      list(
-        mean_blank = ~ mean(.x, na.rm = TRUE),
-        sd_blank = ~ sd(.x, na.rm = TRUE),
-        lod = ~ mean(.x, na.rm = TRUE) + 3 * sd(.x, na.rm = TRUE)
-      ),
-      .names = "{.col}_{.fn}"))
-  
-  # Reshape to long format
-  lod_table_long = lod_table %>%
-    pivot_longer(
-      cols = everything(),
-      names_to = c('protein', '.value'),
-      names_sep = '_')
-  return(lod_table_long)}
-
 # Function to plot LOD distribution
-plot_lod_distribution = function(data, lod_col, protein_id_col) {
+plot_lod_distribution = function(data, lod_col, lod_type) {
   ggplot(data, aes(x = .data[[lod_col]])) +
     geom_histogram(binwidth = 0.2, fill = 'skyblue', color = 'black', alpha = 0.7) +
     labs(
-      title = 'Distribution of Limit of Detection (LOD)',
-      x = 'LOD (NPX)',
+      title = paste0('LOD distribution of ', lod_type),
+      x = 'LOD',
       y = 'Frequency'
     ) +
     theme_minimal() +
     theme(plot.title = element_text(hjust = 0.5))}
-
-# Function to divide data into different visits
-filter_by_visit <- function(data, visit_col, visit_value) {
-  filtered_data = data[data[[visit_col]] == visit_value, ]
-  return(filtered_data)}
 
 # Function to plot QC UMAP
 plot_qc_umap = function(x, y, method, num) {
@@ -147,30 +108,31 @@ protein_warning_counts = calculate_protein_warnings(olink_ht)
 olink_ht_fil1 = filter_samples(olink_ht, sample_warning_counts)
 
 # Filter proteins with > 50% warnings
-olink_ht_fil2 = filter_proteins(filtered_samples, protein_warning_counts)
+olink_ht_fil2 = filter_proteins(olink_ht_fil1, protein_warning_counts)
 
 # Filter measurements with warnings 
 # MISSING: information how to assess measurements to filter warnings
 # (no other columns having WARN/FAIL)
 
 # Select one of the replicate assays
-# MISSING; proteins being replicated
-# Find proteins with multiple assays ERROR it returns 0
-# multiple_assay_proteins = identify_multiple_assay_proteins(olink_ht_fil2)
+# Proteins with multiple measurements: GBP1 (UniProt: P32455), MAP2K1 (UniProt: Q02750)
+# Filtered by UniProt 
+gbp1_measurements = filter_by_column_value(olink_ht_fil2, 'UniProt', 'P32455')
+map2k1_measurements = filter_by_column_value(olink_ht_fil2, 'UniProt', 'Q02750')
+# There are multiple blocks for these proteins
+# Separate by blocks to see LOD distribution
+divide_df_by_column(gbp1_measurements, 'Block')
+divide_df_by_column(map2k1_measurements, 'Block')
+# LOD distribution 
+plot_lod_distribution(data = gbp1_measurements_Block3, lod_col = 'LOD', lod_type = 'GBP1 Block 3') # highest
+plot_lod_distribution(data = gbp1_measurements_Block4, lod_col = 'LOD', lod_type = 'GBP1 Block 4')
+plot_lod_distribution(data = gbp1_measurements_Block5, lod_col = 'LOD', lod_type = 'GBP1 Block 5')
+plot_lod_distribution(data = map2k1_measurements_Block3, lod_col = 'LOD', lod_type = 'MAP2K1 Block 3')
+plot_lod_distribution(data = map2k1_measurements_Block4, lod_col = 'LOD', lod_type = 'MAP2K1 Block 4') # highest
+plot_lod_distribution(data = map2k1_measurements_Block5, lod_col = 'LOD', lod_type = 'MAP2K1 Block 5')
 
 # LOD distribution plot to assess quality
-# MISSING: blank sample to compare
-# lod_ht = calculate_lod(data = olink_ht_fil2,
-#   blank_ids = # list of blank ids,
-#   id_col = # column,             
-#   npx_col = 'NPX', protein_id_col = 'UniProt')
-
-# Join LOD to the data
-# olink_ht_lod = olink_ht_fil2 %>%
-#   left_join(lod_ht %>% select(UniProt, lod_ht), by = 'UniProt')
-
-# Plot LOD distribution
-# plot_lod_distribution(data = olink_ht_lod, lod_col = 'lod_ht', protein_id_col = 'UniProt')
+plot_lod_distribution(data = olink_ht_fil2, lod_col = 'LOD', lod_type = 'Olink HT')
 
 # Plot QC UMAP
 # Divide data into meta data and count data 

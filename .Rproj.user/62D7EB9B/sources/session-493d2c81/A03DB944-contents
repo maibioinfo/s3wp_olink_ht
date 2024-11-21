@@ -1,0 +1,824 @@
+#Estimation of biological and technichal variation 
+#Evaluating different normalization procedures.
+#Emil Nilsson, emil.nilsson@Olink.com
+#20160705
+
+#Libraries
+library(xlsx)
+source('http://bioconductor.org/biocLite.R')
+biocLite('preprocessCore')
+biocLite('sva')
+#load package
+library(preprocessCore)
+library(BBmisc)
+library(lsr)
+library(outliers)
+library(scatterplot3d)
+library(rgl)
+library(gplots)
+library(sva)
+
+#Read Uhlen data
+#Raw data have been modified
+#Non unique names have been adressed
+#Comma is replaced with full stop as decimal separator
+#% is removed in the missing frequency row
+
+#CVD2
+Run1CVD2<-read.xlsx2("En körning/Kopia av NPX and Linear NPX for CVD II.xlsx", sheetName = "NPX_LOD")[,1:93]
+naming<-Run1CVD2$NPX
+Run1CVD2<-Run1CVD2[,2:93]
+Run1CVD2<-apply(Run1CVD2,2,unlist)
+Run1CVD2<-apply(Run1CVD2, 2, as.numeric)
+rownames(Run1CVD2)<-naming
+Run1CVD2<-Run1CVD2[1:89,]
+
+Run2CVD2<-read.xlsx2("En annan körning/Kopia av 20160352_Analysis Service data_CVD2_part2.xlsx", sheetName = "NPX_LOD")[,1:93]
+naming<-Run2CVD2$NPX
+Run2CVD2<-Run2CVD2[,2:93]
+Run2CVD2<-apply(Run2CVD2,2,unlist)
+Run2CVD2<-apply(Run2CVD2, 2, as.numeric)
+rownames(Run2CVD2)<-naming
+Run2CVD2<-Run2CVD2[1:89,]
+
+#kolla att det är samma prover och sortera
+samenames<-rownames(Run1CVD2)[rownames(Run1CVD2)%in%rownames(Run2CVD2)]
+
+Run1CVD2<-Run1CVD2[sort(samenames),]
+Run2CVD2<-Run2CVD2[sort(samenames),]
+
+#Read CVD3
+Run1CVD3<-read.xlsx2("En körning/Kopia av NPX and Linear NPX for CVD III.xlsx", sheetName = "NPX_LOD")[,1:93]
+naming<-Run1CVD3$NPX
+Run1CVD3<-Run1CVD3[,2:93]
+Run1CVD3<-apply(Run1CVD3,2,unlist)
+Run1CVD3<-apply(Run1CVD3, 2, as.numeric)
+rownames(Run1CVD3)<-naming
+Run1CVD3<-Run1CVD3[1:89,]
+
+Run2CVD3<-read.xlsx2("En annan körning/Kopia av 20160352_Analysis Service data_CVD3_part2.xlsx", sheetName = "NPX_LOD")[,1:93]
+naming<-Run2CVD3$NPX
+Run2CVD3<-Run2CVD3[,2:93]
+Run2CVD3<-apply(Run2CVD3,2,unlist)
+Run2CVD3<-apply(Run2CVD3, 2, as.numeric)
+rownames(Run2CVD3)<-naming
+Run2CVD3<-Run2CVD3[1:89,]
+
+#kolla att det är samma prover och sortera
+table(rownames(Run1CVD3)%in%rownames(Run2CVD3))
+samenames<-rownames(Run1CVD3)[rownames(Run1CVD3)%in%rownames(Run2CVD3)]
+
+Run1CVD3<-Run1CVD3[sort(samenames),]
+Run2CVD3<-Run2CVD3[sort(samenames),]
+
+#Läs INF
+
+Run1INF<-read.xlsx2("En körning/NPX and Linear NPX for INF I.xlsx", sheetName = "NPX_LOD")[,1:93]
+naming<-Run1INF$NPX
+Run1INF<-Run1INF[,2:93]
+Run1INF<-apply(Run1INF,2,unlist)
+Run1INF<-apply(Run1INF, 2, as.numeric)
+rownames(Run1INF)<-naming
+Run1INF<-Run1INF[1:87,]
+
+Run2INF<-read.xlsx2("En annan körning/Kopia av 20160352_Analysis Service data_INF_part2.xlsx", sheetName = "NPX_LOD")[,1:93]
+naming<-Run2INF$NPX
+Run2INF<-Run2INF[,2:93]
+Run2INF<-apply(Run2INF,2,unlist)
+Run2INF<-apply(Run2INF, 2, as.numeric)
+rownames(Run2INF)<-naming
+Run2INF<-Run2INF[1:88,]
+
+#kolla att det är samma prover och sortera
+table(rownames(Run1INF)%in%rownames(Run2INF))
+samenames<-rownames(Run1INF)[rownames(Run1INF)%in%rownames(Run2INF)]
+
+Run1INF<-Run1INF[sort(samenames),]
+Run2INF<-Run2INF[sort(samenames),]
+
+#Läs in NEU
+
+Run1NEU<-read.xlsx2("En körning/Kopia av NPX and Linear NPX for NEU.xlsx", sheetName = "NPX_LOD")[,1:93]
+naming<-Run1NEU$NPX
+Run1NEU<-Run1NEU[,2:93]
+Run1NEU<-apply(Run1NEU,2,unlist)
+Run1NEU<-apply(Run1NEU, 2, as.numeric)
+rownames(Run1NEU)<-naming
+Run1NEU<-Run1NEU[1:86,]
+
+Run2NEU<-read.xlsx2("En annan körning/Kopia av 20160352_Analysis Service data_NEU_part2.xlsx", sheetName = "NPX_LOD")[,1:93]
+naming<-Run2NEU$NPX
+Run2NEU<-Run2NEU[,2:93]
+Run2NEU<-apply(Run2NEU,2,unlist)
+Run2NEU<-apply(Run2NEU, 2, as.numeric)
+rownames(Run2NEU)<-naming
+Run2NEU<-Run2NEU[1:89,]
+
+#kolla att det är samma prover och sortera
+table(rownames(Run1NEU)%in%rownames(Run2NEU))
+samenames<-rownames(Run1NEU)[rownames(Run1NEU)%in%rownames(Run2NEU)]
+
+Run1NEU<-Run1NEU[sort(samenames),]
+Run2NEU<-Run2NEU[sort(samenames),]
+
+#Läs in ONC2
+
+Run1ONC<-read.xlsx2("En körning/NPX and Linear NPX for ONC II.xlsx", sheetName = "NPX_LOD")[,1:93]
+naming<-Run1ONC$NPX
+Run1ONC<-Run1ONC[,2:93]
+Run1ONC<-apply(Run1ONC,2,unlist)
+Run1ONC<-apply(Run1ONC, 2, as.numeric)
+rownames(Run1ONC)<-naming
+Run1ONC<-Run1ONC[1:89,]
+
+Run2ONC<-read.xlsx2("En annan körning/Kopia av 20160352_Analysis Service data_ONC2_part2.xlsx", sheetName = "NPX_LOD")[,1:93]
+naming<-Run2ONC$NPX
+Run2ONC<-Run2ONC[,2:93]
+Run2ONC<-apply(Run2ONC,2,unlist)
+Run2ONC<-apply(Run2ONC, 2, as.numeric)
+rownames(Run2ONC)<-naming
+Run2ONC<-Run2ONC[1:89,]
+
+#kolla att det är samma prover och sortera
+table(rownames(Run1ONC)%in%rownames(Run2ONC))
+samenames<-rownames(Run1ONC)[rownames(Run1ONC)%in%rownames(Run2ONC)]
+
+Run1ONC<-Run1ONC[sort(samenames),]
+Run2ONC<-Run2ONC[sort(samenames),]
+
+#Remove unwanted variables
+rm(naming)
+rm(samenames)
+
+
+#Calculate and plot the R-squared values for all panels
+CVD2cor = NULL
+for(i in 1:length(colnames(Run1CVD2))){
+  
+  CVD2cor[i]<-cor(Run1CVD2[,i], Run2CVD2[,i])
+}
+names(CVD2cor)<-colnames(Run1CVD2)
+
+CVD3cor = NULL
+for(i in 1:length(colnames(Run1CVD3))){
+  
+  CVD3cor[i]<-cor(Run1CVD3[,i], Run2CVD3[,i])
+}
+names(CVD3cor)<-colnames(Run1CVD3)
+
+INFcor = NULL
+for(i in 1:length(colnames(Run1INF))){
+  
+  INFcor[i]<-cor(Run1INF[,i], Run2INF[,i])
+}
+names(INFcor)<-colnames(Run1INF)
+
+NEUcor = NULL
+for(i in 1:length(colnames(Run1NEU))){
+  
+ NEUcor[i]<-cor(Run1NEU[,i], Run2NEU[,i])
+}
+names(NEUcor)<-colnames(Run1NEU)
+
+ONCcor = NULL
+for(i in 1:length(colnames(Run1ONC))){
+  
+  ONCcor[i]<-cor(Run1ONC[,i], Run2ONC[,i])
+}
+names(ONCcor)<-colnames(Run1NEU)
+
+boxplot(cbind(CVD2cor, CVD3cor, INFcor, NEUcor, ONCcor))
+
+#Quantile normalize the panels
+
+CVD2qnorm<-normalize.quantiles(t(rbind(Run1CVD2, Run2CVD2)))
+rownames(CVD2qnorm)<-colnames(Run1CVD2)
+CVD3qnorm<-normalize.quantiles(t(rbind(Run1CVD3, Run2CVD3)))
+rownames(CVD3qnorm)<-colnames(Run1CVD3)
+INFqnorm<-normalize.quantiles(t(rbind(Run1INF, Run2INF)))
+rownames(INFqnorm)<-colnames(Run1INF)
+NEUqnorm<-normalize.quantiles(t(rbind(Run1NEU, Run2NEU)))
+rownames(NEUqnorm)<-colnames(Run1NEU)
+ONCqnorm<-normalize.quantiles(t(rbind(Run1ONC, Run2ONC)))
+rownames(ONCqnorm)<-colnames(Run1ONC)
+
+#Check correlation with quantile normalization
+
+CVD2corQ = NULL
+for(i in 1:length(rownames(CVD2qnorm))){
+  
+  CVD2corQ[i]<-cor(CVD2qnorm[i,1:86], CVD2qnorm[i,87:172])
+  }
+names(CVD2corQ)<-colnames(CVD2qnorm)
+
+CVD3corQ = NULL
+for(i in 1:length(rownames(CVD3qnorm))){
+  
+  CVD3corQ[i]<-cor(CVD3qnorm[i,1:85], CVD3qnorm[i,86:170])
+}
+names(CVD3corQ)<-colnames(CVD3qnorm)
+
+INFcorQ = NULL
+for(i in 1:length(rownames(INFqnorm))){
+  
+  INFcorQ[i]<-cor(INFqnorm[i,1:84], CVD3qnorm[i,85:168])
+}
+names(INFcorQ)<-colnames(INFqnorm)
+
+NEUcorQ = NULL
+for(i in 1:length(rownames(NEUqnorm))){
+  
+  NEUcorQ[i]<-cor(NEUqnorm[i,1:83], NEUqnorm[i,84:166])
+}
+names(NEUcorQ)<-colnames(NEUqnorm)
+
+ONCcorQ = NULL
+for(i in 1:length(rownames(ONCqnorm))){
+  
+  ONCcorQ[i]<-cor(ONCqnorm[i,1:86], ONCqnorm[i,87:172])
+}
+names(ONCcorQ)<-colnames(ONCqnorm)
+
+#Boxplot results
+tiff(filename = "Effect on correlation.tiff", height = 15, width = 20, res = 600, units = "cm", bg = "light grey")
+boxplot(cbind(CVD2cor, CVD2corQ, CVD3cor, CVD3corQ, INFcor, INFcorQ, 
+              NEUcor, NEUcorQ, ONCcor, ONCcorQ), col = c("red", "red", "green", "green", "yellow", "yellow","blue", "blue", "orange", "orange"),
+        main = "Within patient correlation with quantile normalization", las = 2)
+dev.off()
+
+#Quantile normalization did not work as well as I hoped
+
+#Calculate biological and technichal variance
+#First the differance between pairs
+
+
+CVD2diff = NULL
+for(i in 1:length(colnames(Run1CVD2))){
+  
+  CVD2diff[i]<-mean(abs(Run1CVD2[,i]-Run2CVD2[,i]))
+}
+names(CVD2diff)<-colnames(Run1CVD2)
+
+
+CVD3diff = NULL
+for(i in 1:length(colnames(Run1CVD3))){
+  
+  CVD3diff[i]<-mean(abs(Run1CVD3[,i]-Run2CVD3[,i]))
+}
+names(CVD3diff)<-colnames(Run1CVD3)
+
+
+INFdiff = NULL
+for(i in 1:length(colnames(Run1INF))){
+  
+  INFdiff[i]<-mean(abs(Run1INF[,i]-Run2INF[,i]))
+}
+names(INFdiff)<-colnames(Run1INF)
+
+NEUdiff = NULL
+for(i in 1:length(colnames(Run1NEU))){
+  
+  NEUdiff[i]<-mean(abs(Run1NEU[,i]-Run2NEU[,i]))
+}
+names(NEUdiff)<-colnames(Run1NEU)
+
+
+ONCdiff = NULL
+for(i in 1:length(colnames(Run1ONC))){
+  
+ ONCdiff[i]<-mean(abs(Run1ONC[,i]-Run2ONC[,i]))
+}
+names(ONCdiff)<-colnames(Run1ONC)
+
+#Here we calculate the average differance in one plate
+
+Run1CVD2aad<-apply(Run1CVD2, 2, aad)
+Run2CVD2aad<-apply(Run2CVD2, 2, aad)
+Run1CVD3aad<-apply(Run1CVD3, 2, aad)
+Run2CVD3aad<-apply(Run2CVD3, 2, aad)
+Run1INFaad<-apply(Run1INF, 2, aad)
+Run2INfaad<-apply(Run2INF, 2, aad)
+Run1NEUaad<-apply(Run1NEU,2,aad)
+Run2NEUaad<-apply(Run2NEU, 2, aad)
+Run1ONCaad<-apply(Run1ONC, 2, aad)
+Run2ONCaad<-apply(Run2ONC, 2, aad)
+
+#And also the average differance When intensity has been normalized on both plates
+
+tiff(filename = "Within_and_and_between_plates.tiff", res = 600, height = 15,
+     width = 20, units = "cm", bg = "light grey")
+boxplot(cbind(CVD2diff, Run1CVD2aad, Run2CVD2aad, CVD3diff, Run1CVD3aad, Run2CVD3aad,
+              INFdiff, Run1INFaad, Run2INfaad, NEUdiff, Run1NEUaad, Run2NEUaad, ONCdiff,
+              Run1ONCaad, Run2ONCaad), ylim = c(0,1.5), col = rainbow(15), las = 2, 
+        main = "Within and between plate deviation")
+dev.off()
+
+
+#Try subtracting the intensity of the lesser plate with that of the greater
+
+d<-mean(Run1CVD2)-mean(Run2CVD2)
+d
+
+CVD2diff2 = NULL
+for(i in 1:length(colnames(Run1CVD2))){
+  
+  CVD2diff2[i]<-mean(abs(Run1CVD2[,i]-(Run2CVD2[,i]+d)))
+}
+names(CVD2diff2)<-colnames(Run1CVD2)
+
+d<-mean(Run1CVD3)-mean(Run2CVD3)
+d
+
+CVD3diff2 = NULL
+for(i in 1:length(colnames(Run1CVD3))){
+  
+  CVD3diff2[i]<-mean(abs(Run1CVD3[,i]-(Run2CVD3[,i]+d)))
+}
+names(CVD3diff2)<-colnames(Run1CVD3)
+
+d<-mean(Run1INF)-mean(Run2INF)
+d
+
+INFdiff2 = NULL
+for(i in 1:length(colnames(Run1INF))){
+  
+  INFdiff2[i]<-mean(abs(Run1INF[,i]-(Run2INF[,i]+d)))
+}
+
+names(INFdiff2)<-colnames(Run1INF)
+
+d<-mean(Run1NEU)-mean(Run2NEU)
+d
+
+NEUdiff2 = NULL
+for(i in 1:length(colnames(Run1NEU))){
+  
+  NEUdiff2[i]<-mean(abs(Run1NEU[,i]-(Run2NEU[,i]+d)))
+}
+
+names(NEUdiff2)<-colnames(Run1NEU)
+
+d<-mean(Run1ONC)-mean(Run2ONC)
+d
+
+ONCdiff2 = NULL
+for(i in 1:length(colnames(Run1ONC))){
+  
+  ONCdiff2[i]<-mean(abs(Run1ONC[,i]-(Run2ONC[,i]+d)))
+}
+
+names(ONCdiff2)<-colnames(Run1ONC)
+
+
+tiff(filename = "Effect of intensity normalizing CVD2.tiff", width = 20, height = 15, res = 600, units = "cm", bg = "light grey")
+plot(sort(CVD2diff2)-CVD2diff[names(sort(CVD2diff2))], type = "l", lwd = 2, 
+     col = "red", ylab = "Change in absolute deviation", xlab = "Different assays",
+     main = "Effect of plate intensity normalization on differances (CVD2)")
+abline(h = 0, lty = 2, lwd = 2)
+dev.off()
+
+tiff(filename = "Effect of intensity normalizing CVD3.tiff", width = 20, height = 15, res = 600, units = "cm", bg = "light grey")
+plot(sort(CVD3diff2)-CVD3diff[names(sort(CVD3diff2))], type = "l", lwd = 2, 
+     col = "red", ylab = "Change in absolute deviation", xlab = "Different assays",
+     main = "Effect of plate intensity normalization on differances (CVD3)")
+abline(h = 0, lty = 2, lwd = 2)
+dev.off()
+
+tiff(filename = "Effect of intensity normalizing INF.tiff", width = 20, height = 15, res = 600, units = "cm", bg = "light grey")
+plot(sort(INFdiff2)-INFdiff[names(sort(INFdiff2))], type = "l", lwd = 2, 
+     col = "red", ylab = "Change in absolute deviation", xlab = "Different assays",
+     main = "Effect of plate intensity normalization on differances (INF)")
+abline(h = 0, lty = 2, lwd = 2)
+dev.off()
+
+tiff(filename = "Effect of intensity normalizing NEU.tiff", width = 20, height = 15, res = 600, units = "cm", bg = "light grey")
+plot(sort(NEUdiff2)-NEUdiff[names(sort(NEUdiff2))], type = "l", lwd = 2, 
+     col = "red", ylab = "Change in absolute deviation", xlab = "Different assays",
+     main = "Effect of plate intensity normalization on differances (NEU)")
+abline(h = 0, lty = 2, lwd = 2)
+dev.off()
+
+tiff(filename = "Effect of intensity normalizing ONC.tiff", width = 20, height = 15, res = 600, units = "cm", bg = "light grey")
+plot(sort(ONCdiff2)-ONCdiff[names(sort(ONCdiff2))], type = "l", lwd = 2, 
+     col = "red", ylab = "Change in absolute deviation", xlab = "Different assays",
+     main = "Effect of plate intensity normalization on differances (ONC)")
+abline(h = 0, lty = 2, lwd = 2)
+dev.off()
+
+
+#re-investigate the quantile normalization
+
+
+CVD2qnorm2<-normalize.quantiles.robust(t(rbind(Run1CVD2, Run2CVD2)), remove.extreme = "both")
+rownames(CVD2qnorm2)<-colnames(Run1CVD2)
+CVD3qnorm2<-normalize.quantiles.robust(t(rbind(Run1CVD3, Run2CVD3)), remove.extreme = "both")
+rownames(CVD3qnorm2)<-colnames(Run1CVD3)
+INFqnorm2<-normalize.quantiles.robust(t(rbind(Run1INF, Run2INF)), remove.extreme = "both")
+rownames(INFqnorm2)<-colnames(Run1INF)
+NEUqnorm2<-normalize.quantiles.robust(t(rbind(Run1NEU, Run2NEU)), remove.extreme = "both")
+rownames(NEUqnorm2)<-colnames(Run1NEU)
+ONCqnorm2<-normalize.quantiles.robust(t(rbind(Run1ONC, Run2ONC)), remove.extreme = "both")
+rownames(ONCqnorm2)<-colnames(Run1ONC)
+
+#Calculate correlateion
+
+CVD2corQ2 = NULL
+for(i in 1:length(rownames(CVD2qnorm2))){
+  
+  CVD2corQ2[i]<-cor(CVD2qnorm2[i,1:86], CVD2qnorm2[i,87:172])
+}
+names(CVD2corQ2)<-colnames(CVD2qnorm2)
+
+CVD3corQ2 = NULL
+for(i in 1:length(rownames(CVD3qnorm2))){
+  
+  CVD3corQ2[i]<-cor(CVD3qnorm2[i,1:85], CVD3qnorm2[i,86:170])
+}
+names(CVD3corQ2)<-colnames(CVD3qnorm2)
+
+INFcorQ2 = NULL
+for(i in 1:length(rownames(INFqnorm2))){
+  
+  INFcorQ2[i]<-cor(INFqnorm2[i,1:84], CVD3qnorm2[i,85:168])
+}
+names(INFcorQ2)<-colnames(INFqnorm2)
+
+NEUcorQ2 = NULL
+for(i in 1:length(rownames(NEUqnorm2))){
+  
+  NEUcorQ2[i]<-cor(NEUqnorm2[i,1:83], NEUqnorm2[i,84:166])
+}
+names(NEUcorQ2)<-colnames(NEUqnorm2)
+
+ONCcorQ2 = NULL
+for(i in 1:length(rownames(ONCqnorm2))){
+  
+  ONCcorQ2[i]<-cor(ONCqnorm2[i,1:86], ONCqnorm2[i,87:172])
+}
+names(ONCcorQ2)<-colnames(ONCqnorm2)
+
+
+#plot results
+  boxplot(cbind(CVD2cor, CVD2corQ, CVD2corQ2, CVD3cor, CVD3corQ, CVD3corQ2,
+                INFcor, INFcorQ, INFcorQ2,NEUcor, NEUcorQ, NEUcorQ2, ONCcor,
+                ONCcorQ,ONCcorQ2), col = c("red", "red", "red", "green", "green", 
+                                           "green", "yellow", "yellow", "yellow", 
+                                           "blue", "blue","blue", "orange", "orange",
+                                           "Orange"),
+          main = "Within patient correlation with quantile normalization", las = 2)
+
+
+
+
+
+DiffQCVD2<-abs(normalize.quantiles(t(Run1CVD2))-normalize.quantiles(t(Run2CVD2)))
+DiffCVD2<-abs(t(Run1CVD2)-t(Run2CVD2))
+
+DiffQCVD3<-abs(normalize.quantiles(t(Run1CVD3))-normalize.quantiles(t(Run2CVD3)))
+DiffCVD3<-abs(t(Run1CVD3)-t(Run2CVD3))
+
+DiffQINF<-abs(normalize.quantiles(t(Run1INF))-normalize.quantiles(t(Run2INF)))
+DiffINF<-abs(t(Run1INF)-t(Run2INF))
+
+DiffQNEU<-abs(normalize.quantiles(t(Run1NEU))-normalize.quantiles(t(Run2NEU)))
+DiffNEU<-abs(t(Run1NEU)-t(Run2NEU))
+
+DiffQONC<-abs(normalize.quantiles(t(Run1ONC))-normalize.quantiles(t(Run2ONC)))
+DiffONC<-abs(t(Run1ONC)-t(Run2ONC))
+
+boxplot(apply(DiffQONC, 1, median), apply(DiffONC, 1, median))
+
+#After vacation we tried again, this time starting from defining the problem
+
+DiffCVD2<-Run1CVD2-Run2CVD2
+DiffCVD3<-Run1CVD3-Run2CVD3
+DiffINF<-Run1INF-Run2INF
+DiffNEU<-Run1NEU-Run2NEU
+DiffONC2<-Run1ONC-Run2ONC
+
+tiff(filename = "Theproblem.tiff", height = 20, width = 30, units = "cm", res = 600, compression = "lzw")
+par(bg = "light grey", mfrow = c(2,3))
+boxplot(cbind(colMeans(DiffCVD2), colMeans(DiffCVD3), colMeans(DiffINF), colMeans(DiffNEU), colMeans(DiffONC2)),
+        ylim = c(-1.5,1.5), names = c("CVD2", "CVD3", "INF", "NEU", "ONC2"), main = "Differance between runs in all assays",
+        col = rainbow(5))
+abline(h = 0, lty = 2, lwd = 2)
+
+#PCA's to illustrate the problem
+PCACVD2<-prcomp(rbind(Run1CVD2, Run2CVD2))
+colorvec<-c(rep(2, length(rownames(Run1CVD2))), rep(3, length(rownames(Run2CVD2))))
+scatterplot3d(PCACVD2$x[, 3], PCACVD2$x[, 2], PCACVD2$x[, 1], cex.symbols = 2, color = colorvec, pch = 20, main = "CVD2")
+
+
+PCACVD3<-prcomp(rbind(Run1CVD3, Run2CVD3))
+colorvec<-c(rep(2, length(rownames(Run1CVD3))), rep(3, length(rownames(Run2CVD3))))
+scatterplot3d(PCACVD3$x[, 3], PCACVD3$x[, 2], PCACVD3$x[, 1],  cex.symbols = 2, color = colorvec, pch = 20, main = "CVD3")
+
+
+PCAINF<-prcomp(rbind(Run1INF, Run2INF))
+colorvec<-c(rep(2, length(rownames(Run1INF))), rep(3, length(rownames(Run2INF))))
+scatterplot3d(PCAINF$x[, 3], PCAINF$x[, 2], PCAINF$x[, 1],  cex.symbols = 2, color = colorvec, pch = 20, main = "INF")
+
+
+PCANEU<-prcomp(rbind(Run1NEU, Run2NEU))
+colorvec<-c(rep(2, length(rownames(Run1NEU))), rep(3, length(rownames(Run2NEU))))
+scatterplot3d(PCANEU$x[, 3], PCANEU$x[, 2], PCANEU$x[, 1],  cex.symbols = 2, color = colorvec, pch = 20, main = "NEU")
+
+
+PCAONC<-prcomp(rbind(Run1ONC, Run2ONC))
+colorvec<-c(rep(2, length(rownames(Run1ONC))), rep(3, length(rownames(Run2ONC))))
+scatterplot3d(PCAONC$x[, 3], PCAONC$x[, 2], PCAONC$x[, 1],  cex.symbols = 2, color = colorvec, pch = 20, main = "ONC")
+
+dev.off()
+
+#Same image with scaling
+
+
+DiffCVD2<-scale(Run1CVD2, scale = FALSE)-scale(Run2CVD2, scale = FALSE)
+DiffCVD3<-scale(Run1CVD3, scale = FALSE)-scale(Run2CVD3, scale = FALSE)
+DiffINF<-scale(Run1INF, scale = FALSE)-scale(Run2INF, scale = FALSE)
+DiffNEU<-scale(Run1NEU, scale = FALSE)-scale(Run2NEU, scale = FALSE)
+DiffONC2<-scale(Run1ONC, scale = FALSE)-scale(Run2ONC, scale = FALSE)
+
+tiff(filename = "Theproblemwithscaling.tiff", height = 20, width = 30, units = "cm", res = 600, compression = "lzw")
+par(bg = "light grey", mfrow = c(2,3))
+
+par(bg = "light grey", mfrow = c(2,3))
+boxplot(cbind(colMeans(DiffCVD2), colMeans(DiffCVD3), colMeans(DiffINF), colMeans(DiffNEU), colMeans(DiffONC2)),
+        names = c("CVD2", "CVD3", "INF", "NEU", "ONC2"), main = "Differance between runs in all assays",
+        col = rainbow(5))
+abline(h = 0, lty = 2, lwd = 2)
+
+#PCA's to illustrate the effect of scaling
+PCACVD2<-prcomp(rbind(scale(Run1CVD2, scale = FALSE), scale(Run2CVD2, scale = FALSE)))
+colorvec<-c(rep(2, length(rownames(Run1CVD2))), rep(3, length(rownames(Run2CVD2))))
+scatterplot3d(PCACVD2$x[, 3], PCACVD2$x[, 2], PCACVD2$x[, 1], cex.symbols = 2, color = colorvec, pch = 20, main = "CVD2")
+
+
+PCACVD3<-prcomp(rbind(scale(Run1CVD3, scale = FALSE), scale(Run2CVD3, scale = FALSE)))
+colorvec<-c(rep(2, length(rownames(Run1CVD3))), rep(3, length(rownames(Run2CVD3))))
+scatterplot3d(PCACVD3$x[, 3], PCACVD3$x[, 2], PCACVD3$x[, 1],  cex.symbols = 2, color = colorvec, pch = 20, main = "CVD3")
+
+
+PCAINF<-prcomp(rbind(scale(Run1INF, scale = FALSE), scale(Run2INF, scale = FALSE)))
+colorvec<-c(rep(2, length(rownames(Run1INF))), rep(3, length(rownames(Run2INF))))
+scatterplot3d(PCAINF$x[, 3], PCAINF$x[, 2], PCAINF$x[, 1],  cex.symbols = 2, color = colorvec, pch = 20, main = "INF")
+
+
+PCANEU<-prcomp(rbind(scale(Run1NEU, scale = FALSE), scale(Run2NEU, scale = FALSE)))
+colorvec<-c(rep(2, length(rownames(Run1NEU))), rep(3, length(rownames(Run2NEU))))
+scatterplot3d(PCANEU$x[, 3], PCANEU$x[, 2], PCANEU$x[, 1],  cex.symbols = 2, color = colorvec, pch = 20, main = "NEU")
+
+
+PCAONC<-prcomp(rbind(scale(Run1ONC, scale = FALSE), scale(Run2ONC, scale = FALSE)))
+colorvec<-c(rep(2, length(rownames(Run1ONC))), rep(3, length(rownames(Run2ONC))))
+scatterplot3d(PCAONC$x[, 3], PCAONC$x[, 2], PCAONC$x[, 1],  cex.symbols = 2, color = colorvec, pch = 20, main = "ONC")
+
+dev.off()
+
+plot3d(PCAINF$x[, 3], PCAINF$x[, 2], PCAINF$x[, 1], col = colorvec, size = 15)
+plot3d(PCANEU$x[, 3], PCANEU$x[, 2], PCANEU$x[, 1], col = colorvec, size = 15)
+
+#same image with quantile normalization
+
+#Try ComBat
+
+#CVD2
+colorvec<-c(rep(2, length(rownames(Run1CVD2))), rep(3, length(rownames(Run2CVD2))))
+
+CVD2comb<-cbind(rbind(Run1CVD2, Run2CVD2), colorvec)
+CVD2comb<-CVD2comb[, apply(CVD2comb, 2, var)>0.05]
+
+CVD2combCB<-ComBat(t(CVD2comb[, 1:85]), batch = CVD2comb[, 86])
+CVD2combCB<-rbind(CVD2combCB, CVD2comb[, 86])
+CVD2combCB<-t(CVD2combCB)
+
+#CVD3
+
+colorvec<-c(rep(2, length(rownames(Run1CVD3))), rep(3, length(rownames(Run2CVD3))))
+
+CVD3comb<-cbind(rbind(Run1CVD3, Run2CVD3), colorvec)
+CVD3comb<-CVD3comb[, apply(CVD3comb, 2, var)>0.05]
+
+CVD3combCB<-ComBat(t(CVD3comb[, 1:92]), batch = CVD3comb[, 93])
+CVD3combCB<-rbind(CVD3combCB, CVD3comb[, 93])
+CVD3combCB<-t(CVD3combCB)
+
+#INF
+
+colorvec<-c(rep(2, length(rownames(Run1INF))), rep(3, length(rownames(Run2INF))))
+
+INFcomb<-cbind(rbind(Run1INF, Run2INF), colorvec)
+INFcomb<-INFcomb[, apply(INFcomb, 2, var)>0.05]
+
+INFcombCB<-ComBat(t(INFcomb[, 1:86]), batch = INFcomb[, 87])
+INFcombCB<-rbind(INFcombCB, INFcomb[, 87])
+INFcombCB<-t(INFcombCB)
+
+#NEU
+
+colorvec<-c(rep(2, length(rownames(Run1NEU))), rep(3, length(rownames(Run2NEU))))
+
+NEUcomb<-cbind(rbind(Run1NEU, Run2NEU), colorvec)
+NEUcomb<-NEUcomb[, apply(NEUcomb, 2, var)>0.05]
+
+NEUcombCB<-ComBat(t(NEUcomb[, 1:76]), batch = NEUcomb[, 77])
+NEUcombCB<-rbind(NEUcombCB, NEUcomb[, 77])
+NEUcombCB<-t(NEUcombCB)
+
+#ONC2
+colorvec<-c(rep(2, length(rownames(Run1ONC))), rep(3, length(rownames(Run2ONC))))
+
+ONCcomb<-cbind(rbind(Run1ONC, Run2ONC), colorvec)
+ONCcomb<-ONCcomb[, apply(ONCcomb, 2, var)>0.05]
+
+ONCcombCB<-ComBat(t(ONCcomb[, 1:77]), batch = ONCcomb[, 78])
+ONCcombCB<-rbind(ONCcombCB, ONCcomb[, 78])
+ONCcombCB<-t(ONCcombCB)
+
+DiffCVD2b<-CVD2combCB[1:86, 1:85]-CVD2combCB[87:172, 1:85]
+DiffCVD3b<-CVD3combCB[1:85, 1:92]-CVD3combCB[86:170, 1:92]
+DiffINFb<-INFcombCB[1:84, 1:86]-INFcombCB[85:168, 1:86]
+DiffNEUb<-NEUcombCB[1:83, 1:76]-NEUcombCB[84:166, 1:76]
+DiffONC2b<-ONCcombCB[1:86, 1:77]-ONCcombCB[87:172, 1:77]
+
+#plotting
+
+tiff(filename = "TheproblemwithComBat.tiff", height = 20, width = 30, units = "cm", res = 600, compression = "lzw")
+
+par(bg = "light grey", mfrow = c(2,3))
+boxplot(cbind(colMeans(DiffCVD2b), colMeans(DiffCVD3b), colMeans(DiffINFb), colMeans(DiffNEUb), colMeans(DiffONC2b)),
+        names = c("CVD2", "CVD3", "INF", "NEU", "ONC2"), main = "Differance between runs in all assays",
+        col = rainbow(5))
+abline(h = 0, lty = 2, lwd = 2)
+
+
+PCACVD2b<-prcomp(CVD2combCB[, 1:85])
+colorvec<-CVD2combCB[,86]
+scatterplot3d(PCACVD2b$x[, 3], PCACVD2b$x[, 2], PCACVD2b$x[, 1], cex.symbols = 2, color = colorvec, pch = 20, main = "CVD2")
+
+PCACVD3b<-prcomp(CVD3combCB[, 1:92])
+colorvec<-CVD3combCB[,93]
+scatterplot3d(PCACVD3b$x[, 3], PCACVD3b$x[, 2], PCACVD3b$x[, 1], cex.symbols = 2, color = colorvec, pch = 20, main = "CVD3")
+
+PCAINFb<-prcomp(INFcombCB[, 1:86])
+colorvec<-INFcombCB[,87]
+scatterplot3d(PCAINFb$x[, 3], PCAINFb$x[, 2], PCAINFb$x[, 1], cex.symbols = 2, color = colorvec, pch = 20, main = "INF")
+
+PCANEUb<-prcomp(NEUcombCB[, 1:76])
+colorvec<-NEUcombCB[,77]
+scatterplot3d(PCANEUb$x[, 3], PCANEUb$x[, 2], PCANEUb$x[, 1], cex.symbols = 2, color = colorvec, pch = 20, main = "NEU")
+
+PCAONCb<-prcomp(ONCcombCB[, 1:77])
+colorvec<-ONCcombCB[,78]
+scatterplot3d(PCAONCb$x[, 3], PCAONCb$x[, 2], PCAONCb$x[, 1], cex.symbols = 2, color = colorvec, pch = 20, main = "ONC")
+
+dev.off()
+
+
+#Check sum of differances
+DiffCVD2<-Run1CVD2-Run2CVD2
+DiffCVD3<-Run1CVD3-Run2CVD3
+DiffINF<-Run1INF-Run2INF
+DiffNEU<-Run1NEU-Run2NEU
+DiffONC2<-Run1ONC-Run2ONC
+
+DiffCVD2b<-scale(Run1CVD2, scale = FALSE)-scale(Run2CVD2, scale = FALSE)
+DiffCVD3b<-scale(Run1CVD3, scale = FALSE)-scale(Run2CVD3, scale = FALSE)
+DiffINFb<-scale(Run1INF, scale = FALSE)-scale(Run2INF, scale = FALSE)
+DiffNEUb<-scale(Run1NEU, scale = FALSE)-scale(Run2NEU, scale = FALSE)
+DiffONC2b<-scale(Run1ONC, scale = FALSE)-scale(Run2ONC, scale = FALSE)
+
+DiffCVD2c<-CVD2combCB[1:86, 1:85]-CVD2combCB[87:172, 1:85]
+DiffCVD3c<-CVD3combCB[1:85, 1:92]-CVD3combCB[86:170, 1:92]
+DiffINFc<-INFcombCB[1:84, 1:86]-INFcombCB[85:168, 1:86]
+DiffNEUc<-NEUcombCB[1:83, 1:76]-NEUcombCB[84:166, 1:76]
+DiffONC2c<-ONCcombCB[1:86, 1:77]-ONCcombCB[87:172, 1:77]
+
+
+barplot(c(sum(abs(DiffCVD2))/7912, sum(abs(DiffCVD2b))/7912, sum(abs(DiffCVD2c))/7310, sum(abs(DiffCVD3))/7820, sum(abs(DiffCVD3b))/7820, 
+          sum(abs(DiffCVD3c))/7820, sum(abs(DiffINF))/7728, sum(abs(DiffINFb))/7728, sum(abs(DiffINFc))/7224, sum(abs(DiffNEU))/7636, 
+          sum(abs(DiffNEUb))/7636, sum(abs(DiffNEUc))/6308, sum(abs(DiffONC))/7912, sum(abs(DiffONC2b))/7912, sum(abs(DiffONC2c))/6622),
+        col = rainbow(15), names.arg = c("CVD2", "CVD2b", "CVD2c", "CVD3", "CVD3b", "CVD3c", "INF", "INFb", "INFc",
+                                         "NEU", "NEUb", "NEUc", "ONC2", "ONC2b", "ONC2c"), main = "Sum of all differances")
+
+
+#Remember to divide by number of data points in the above graph
+
+#Check if the Nguyen strategy works, subtracting the intercept
+
+coef = NULL
+Rvalue = NULL
+
+for(i in 1:length(rownames(Run1CVD2))){
+  
+  tester<-summary(lm(Run1CVD2[i, ]~Run2CVD2[i, ]))
+  coef[i]<-tester$coefficients[1,1]
+  Rvalue[i]<-tester$r.squared
+}
+
+CRCVD2<-cbind(coef, Rvalue)
+rownames(CRCVD2)<-rownames(Run1CVD2)
+
+plot(CRCVD2[, 1], CRCVD2[, 2], pch = 20, col = rainbow(length(rownames(CRCVD2))))
+
+t.test(rowMeans(Run1CVD2), rowMeans(Run2CVD2))
+plot(rowMeans(Run1CVD2), rowMeans(Run2CVD2))
+
+#Calculate the individual factor which can be used to make the means in the two runs the same for each assay
+#This does nothing for the correlation but eliminates intensity bias
+
+CVD2diff3<-colMeans(Run1CVD2)-colMeans(Run2CVD2)
+t.test(Run1CVD2[,1]-CVD2diff3[1], Run2CVD2[,1])
+Run1CVD2adj<-t(t(Run1CVD2)-CVD2diff3)
+CVD2adj<-rbind(Run1CVD2adj, Run2CVD2)
+plot(colMeans(Run1CVD2adj), colMeans(Run2CVD2))
+
+i<-sample(92, 1)
+t.test(Run1CVD2adj[,1], Run2CVD2[,1])
+
+#check average differance before and after adjustment
+
+boxplot(colMeans(abs(Run1CVD2-Run2CVD2)), colMeans(abs(Run1CVD2adj-Run2CVD2)))
+
+
+#Do the other panels
+CVD3diff3<-colMeans(Run1CVD3)-colMeans(Run2CVD3)
+Run1CVD3adj<-t(t(Run1CVD3)-CVD3diff3)
+CVD3adj<-rbind(Run1CVD3adj, Run2CVD3)
+plot(colMeans(Run1CVD3adj), colMeans(Run2CVD3))
+
+i<-sample(92, 1)
+t.test(Run1CVD3adj[,1], Run2CVD3[,1])
+
+boxplot(colMeans(abs(Run1CVD3-Run2CVD3)), colMeans(abs(Run1CVD3adj-Run2CVD3)))
+
+
+i<-sample(92, 1)
+cor.test(Run1CVD2[,i], Run2CVD2[,i])
+cor.test(Run1CVD2adj[,i], Run2CVD2[,i])
+cor.test(normalize(Run1CVD2adj[,i]), normalize(Run2CVD2[,i]))
+cor.test(normalize(Run1CVD2[,i]), normalize(Run2CVD2[,i]))
+t.test(normalize(Run1CVD2[,i]), normalize(Run2CVD2[,i]))
+
+
+cor.test(normalize.quantiles(Run1CVD2)[,1], normalize.quantiles(Run2CVD2)[,1])
+t.test(normalize.quantiles(Run1CVD2)[,1], normalize.quantiles(Run2CVD2)[,1])
+
+cor.test(scale(normalize.quantiles(t(Run1CVD2)[1,])), scale(normalize.quantiles(t(Run2CVD2))[1,]))
+t.test(normalize.quantiles(Run1CVD2)[,1], normalize.quantiles(Run2CVD2)[,1])
+
+cor(Run1CVD2)
+t.test(Run1CVD2[,2],Run2CVD2[,2])
+
+plist = NULL
+for(i in 1:92){
+ 
+    tester<-t.test(Run1CVD2[,i], Run2CVD2[,i])
+    plist[i]<-tester$p.value
+}
+
+meandiffsCVD2<-colMeans(Run1CVD2)-colMeans(Run2CVD2)  
+
+plist2 = NULL
+for(i in 1:92){
+  
+  tester<-t.test(Run1CVD2[,i]-meandiffsCVD2[i], Run2CVD2[,i])
+  plist2[i]<-tester$p.value
+}
+
+cor(Run1CVD2[,2]-meandiffsCVD2[2], Run2CVD2[,2])
+cor(normalize.quantiles(t(Run1CVD2))[1,], normalize.quantiles(t(Run2CVD2))[1,])
+plot(normalize.quantiles(t(Run1CVD2))[,2], normalize.quantiles(t(Run2CVD2))[,2])
+summary(lm(normalize.quantiles(t(Run1CVD2))[,2]~normalize.quantiles(t(Run2CVD2))[,2]))
+
+#Quantile normalize each run separately
+
+CVD2qnorm3_1<-normalize.quantiles(t(Run1CVD2))
+CVD2qnorm3_2<-normalize.quantiles(t(Run2CVD2))
+
+cortest = NULL
+
+for(i in 1:92){
+   
+       cortest[i]<-cor(CVD2qnorm3_1[i,],CVD2qnorm3_2[i, ]) 
+    }
+
+CVD2scale1<-apply(Run1CVD2, 2, scale)
+CVD2scale2<-apply(Run2CVD2, 2, scale)
+
+DiffscaleCVD2<-CVD2scale1-CVD2scale2
+
+plot(colMeans(DiffscaleCVD2))
+
+#Test of BDNF correlation
+
+BDNFINF<-Run1INF[, "X103_BDNF"]
+BDNFNEU<-Run1NEU[, "X103_BDNF"]
+
+plot(BDNFINF, BDNFNEU[names(BDNFINF)], main = "Comparison of BDNF in INF and NEU", 
+     xlab = "Visit 1 INF", ylab = "Visit 1 NEU", pch = 20)
+abline(lm(BDNFNEU[names(BDNFINF)]~BDNFINF), lwd = 2, lty = 2)
+summary(lm(BDNFNEU[names(BDNFINF)]~BDNFINF))
+
+
+
