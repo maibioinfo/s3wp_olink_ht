@@ -1,0 +1,764 @@
+wellness.subject.colors<-c("#8b6fed","#55be40","#ac42be","#5ed867","#902da6","#57a621","#3c66e8","#a5c533","#ad6beb","#7cb939","#d065e1","#3dc26b","#d539a4","#90d15e","#7348bd","#b7c035","#7377ec","#d1bb38","#4c7ff1","#e89b1b","#2e8bf3","#cca430","#4455bb","#799f2b","#a153c0","#3c8d25","#ee81e3","#32a24b","#e73379","#38cc94","#a53790","#81c675","#9e7ee9","#9a9d2c","#cf83e9","#6ba149","#c75fb4","#3b772c","#e25aa4","#4b9d65","#df3952","#47cebe","#d7412d","#5fc7f2","#da6224","#4b96eb","#ac850f","#5d7ad5","#d78330","#8065c2","#c4bc59","#794896","#a3bd61","#a76abe","#767c16","#d992e2","#525e1b","#e987c7","#2c6f47","#de5482","#70c297","#ab316c","#349176","#b5344e","#3db6c0","#aa3823","#1da4cc","#ef764f","#5da3db","#ac6019","#3f5d9c","#ebab51","#675ea2","#cfb464","#aa88d3","#b18d3d","#7880c3","#8c924a","#9aa3e8","#816c2a","#cca6e7","#6b7633","#b774a7","#7ca260","#934e7d","#b7b777","#377cb1","#d79b5f","#974863","#ee9c74","#e796bb","#92652b","#e0748e","#c8986c","#a14d51","#c06a47","#db8985","#924e2a","#e26d66")
+names(wellness.subject.colors)<-wellness.data$subject_id
+
+#cols<-c("cyan3","#d95f02","#7570b3","deeppink","#66a61e","#e6ab02","#a6761d","dodgerblue3")
+
+euc.dist <- function(x1, x2) sqrt(sum((x1 - x2) ^ 2, na.rm=T))
+
+
+plot.umap.all.methods<-function(x,y,subject.visit,method, num) {
+  subject.vec<-substring(subject.visit, 0,4)
+  
+  unique.subjects<-unique(subject.vec)
+  sex.vec<-unlist(filter(wellness.data, subject_id %in% unique.subjects)$sex)
+  sex.df<-as.data.frame(cbind(unique.subjects, sex.vec))
+  names(sex.df)<-c("subject_id", "Gender")
+  title<-paste0(method, "\nNumber of subjects=",length(unique(subject.vec)), "\nn=",num)
+  file.name<-paste0("umap.figure.",method,".pdf")
+  data.df<-data.frame(x=x, y=y,  subject_id=subject.vec, subject.visit=subject.visit)
+  data.df<- merge(data.df, sex.df, by="subject_id")
+  sex.colors<-c("#F8766D", "#00BFC4")
+  names(sex.colors)<-c("f","m")
+  
+  g1<-ggplot(data.df, aes(x=x, y=y, group=subject_id, color=subject_id))+geom_point(size=4, alpha=0.3) +geom_path() +xlab("UMAP1")+ylab("UMAP2")+ggtitle(title)+theme_light()+theme(legend.position="none")+ scale_color_manual(values=wellness.subject.colors)
+  g1<-g1  + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(),axis.line = element_line(colour = "black"))
+  
+  g2<-ggplot(data.df, aes(x=x, y=y, group=subject_id, color=subject_id, label=subject.visit)) +geom_text(size=2) +geom_path() +xlab("UMAP1")+ylab("UMAP2")+ggtitle(title)+theme_light()+theme(legend.position="none")+ scale_color_manual(values=wellness.subject.colors)
+  g2<-g2  + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(),axis.line = element_line(colour = "black"))
+  
+  # g3<-ggplot(data.df, aes(x=x, y=y)) +geom_text(size=2,aes(color=Gender,label=subject.visit)) +geom_path(aes(group=subject_id,color=Gender))
+  g3<-ggplot(data.df, aes(x=x, y=y, color=Gender)) +geom_point(size=4, alpha=0.3) +geom_path(aes(group=subject_id,color=Gender)) 
+  g3<-g3 +xlab("UMAP1")+ylab("UMAP2")+ggtitle(title)+theme_light()+theme(legend.position="none")+ scale_color_manual(values=sex.colors)
+  g3<-g3 + stat_ellipse(aes(color=Gender, group = Gender),type = "t", linetype = "dotted", show.legend = F) 
+  g3<-g3  + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(),axis.line = element_line(colour = "black"))
+  
+  pdf(file=file.name,w=16,h=6)
+  grid.arrange(g1, g2, g3 , ncol=3,  top=textGrob("", gp=gpar(fontsize=15,fontface="bold")))
+  dev.off()
+}
+
+# data.file<-clinchem.df.log.scale
+# subject.visit<-clin.subject.visit
+# method="clinical chemistry"
+# 
+# data.file<-metabol.lc.data.log.uv
+# subject.visit<-paste0(metabol.lc.subjects,"_",metabol.lc.visit)
+# method="Metabolomics LC-MS"
+# 
+# data.file<-cytof.count.mat.log.scale
+# subject.visit<-paste0(cytof.subjects,"_",cytof.visit)
+# method="Immune cytome"
+
+###########Calculate distance based on table
+get.distance.data<-function(data.file, subject.visit, method) {
+  subject.vec<-substring(subject.visit, 0,4)
+  visit.vec<-substring(subject.visit, 6,6)
+  unique.subjects<-unique(subject.vec)
+  unique.visits<-unique(visit.vec)
+  distance.mat<-matrix(nrow=length(unique.subjects), ncol=6)
+  rownames(distance.mat)<-unique.subjects
+  
+  var.names<-colnames(data.file)
+  
+  for(i in 1:length(unique.subjects)) {
+    subj<-unique.subjects[i]
+    pos<-grep(subj,subject.vec)
+    person.df<-data.file[pos,]
+    
+    dist12<-euc.dist(person.df[1,],person.df[2,])
+    dist23<-euc.dist(person.df[2,],person.df[3,])
+    dist34<-euc.dist(person.df[3,],person.df[4,])
+    if(length(unique.visits)==6) {
+      dist45<-euc.dist(person.df[4,],person.df[5,])
+      dist56<-euc.dist(person.df[5,],person.df[6,])
+    } else {
+      dist45<-NA
+      dist56<-NA
+    }
+    dist.vec<-c(dist12, dist23,dist34,dist45,dist56)
+    mean.dist<-mean(dist.vec, na.rm=T)
+    distance.mat[i,]<-c(mean.dist,dist.vec)
+    
+  }
+  distance.df<-as.data.frame(distance.mat)
+  distance.df<-cbind(unique.subjects, distance.df)
+  names(distance.df)<-c("subject_id","mean.dist","dist12","dist23","dist34","dist45","dist56")
+  
+  distance.df.melt<-melt(distance.df,  id.vars=c("subject_id","mean.dist"))
+  names(distance.df.melt)[3:4]<-c("visits","distance")
+  distance.df.melt$subject_id<-as.factor(distance.df.melt$subject_id)
+  
+  plot.distances(distance.df, distance.df.melt, method, subject.visit,data.file)
+  
+  distance.df.melt<-cbind(distance.df.melt, rep(method, nrow(distance.df.melt)))
+  names(distance.df.melt)[5]<-"method"
+  return(list(distance.df,distance.df.melt))
+}
+
+plot.distances<-function(distance.df, distance.df.melt, method,subject.visit,data.file) {
+  subject.vec<-substring(subject.visit, 0,4)
+  visit.vec<-substring(subject.visit, 6,6)
+  unique.subjects<-unique(subject.vec)
+  unique.visits<-unique(visit.vec)
+  
+  var.names<-colnames(data.file)
+  
+  pdf(paste0(method, ".distance.data.pdf"), w=10,h=10)
+  g1<-  ggplot(distance.df.melt, aes(x=visits,y=distance, label=subject_id, color=subject_id, group=subject_id)) + geom_text() + theme_light() #+ geom_line() 
+  g2<-  ggplot(distance.df.melt, aes(x=visits,y=distance, label=subject_id, color=subject_id, group=subject_id)) + geom_text() + geom_line()+ theme_light()
+  g3<-  ggplot(distance.df.melt, aes(x=visits,y=distance, label=subject_id, color=subject_id, group=subject_id)) + geom_point() + geom_line()+ theme_light()
+  plot(g1)
+  plot(g2)
+  plot(g3)
+  dev.off()
+  
+  #order by mean distance
+  distance.df.melt$subject_id<-reorder(distance.df.melt$subject_id, distance.df.melt$mean.dist)
+  #unique(distance.df.melt$visits)
+  distance.df.melt$visits<-as.character(distance.df.melt$visits)
+  distance.df.melt$visits[which(distance.df.melt$visits=="dist12")]<-"1-2"
+  distance.df.melt$visits[which(distance.df.melt$visits=="dist23")]<-"2-3"
+  distance.df.melt$visits[which(distance.df.melt$visits=="dist34")]<-"3-4"
+  distance.df.melt$visits[which(distance.df.melt$visits=="dist45")]<-"4-5"
+  distance.df.melt$visits[which(distance.df.melt$visits=="dist56")]<-"5-6"
+  
+  pdf(paste0(method, ".distance.data.dotplot.pdf"), w=10,h=6)
+  g<-ggplot(distance.df.melt) + geom_point(aes(x=subject_id,y=distance,  color=visits)) 
+  g<- g + geom_line(data=distance.df.melt, aes(x=as.numeric(subject_id),y=mean.dist), color="red")+ xlab("") + ylab("Euclidian distance") 
+  g<- g + theme_light() + theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5, size=rel(0.7))) 
+  plot(g)
+  dev.off()
+  
+  distance.df.sort<-distance.df[order(distance.df$mean.dist, decreasing = T),]
+  
+  if(length(unique.visits)==6) {
+    pdf(paste0(method, ".distance.per.person.pdf"),w=14,h=10)
+  } else {
+    pdf(paste0(method, ".distance.per.person.pdf"),w=10,h=10)
+  }
+  for(i in 1:length(unique.subjects)) {
+    #  print(i)
+    subj<-as.character(distance.df.sort$subject_id[i])
+    pos<-grep(subj,subject.vec)
+    person.df<-data.file[pos,]
+    dist12<-euc.dist(person.df[1,],person.df[2,])
+    dist23<-euc.dist(person.df[2,],person.df[3,])
+    dist34<-euc.dist(person.df[3,],person.df[4,])
+    if(length(unique.visits)==6) {
+      dist45<-euc.dist(person.df[4,],person.df[5,])
+      dist56<-euc.dist(person.df[5,],person.df[6,])
+    } else {
+      dist45<-NA
+      dist56<-NA
+    }
+    dist.vec<-c(dist12, dist23,dist34,dist45,dist56)
+    mean.dist<-mean(dist.vec)
+    #factor(distance.df.melt$visits)
+    distance.df.melt<-filter(distance.df.melt, !is.na(distance))
+    distance.df.melt$visits <- as.factor(as.character(distance.df.melt$visits))
+    
+    g<-ggplot(distance.df.melt, aes(x=visits,y=distance, label=subject_id, group=subject_id)) + geom_point() + geom_point(data=filter(distance.df.melt, subject_id==subj), aes(x=visits, y=distance), color="red", size=4)+ geom_line(data=filter(distance.df.melt, subject_id==subj), aes(x=visits, y=distance), color="red") + theme_light()
+    if(ncol(data.file)<400) { #Don't print labels if too many
+      g12<-ggplot(data.frame(x=person.df[1,], y=person.df[2,], variables=var.names), aes(x=x, y=y, label=variables, color=variables)) + geom_point() + geom_text(size=3, vjust=-1) + xlab("visit 1") + ylab("visit 2") + ggtitle(paste0("Distance 1-2: ",round(dist12,2))) + geom_abline(intercept=0, slope=1,linetype="dashed")+ theme_light()+theme(legend.position = "none")
+      g23<-ggplot(data.frame(x=person.df[2,], y=person.df[3,], variables=var.names), aes(x=x, y=y, label=variables, color=variables)) + geom_point()+ geom_text(size=3, vjust=-1) + xlab("visit 2") + ylab("visit 3") + ggtitle(paste0("Distance 2-3: ",round(dist23,2))) + geom_abline(intercept=0, slope=1,linetype="dashed")+ theme_light()+theme(legend.position = "none")
+      g34<-ggplot(data.frame(x=person.df[3,], y=person.df[4,], variables=var.names), aes(x=x, y=y, label=variables, color=variables)) + geom_point()+ geom_text(size=3, vjust=-1) + xlab("visit 3") + ylab("visit 4") + ggtitle(paste0("Distance 3-4: ",round(dist34,2))) + geom_abline(intercept=0, slope=1,linetype="dashed")+ theme_light()+theme(legend.position = "none")
+      if(length(unique.visits)==6) {
+        g45<-ggplot(data.frame(x=person.df[4,], y=person.df[5,], variables=var.names), aes(x=x, y=y, label=variables, color=variables)) + geom_point()+ geom_text(size=3, vjust=-1) + xlab("visit 4") + ylab("visit 5") + ggtitle(paste0("Distance 4-5: ",round(dist45,2))) + geom_abline(intercept=0, slope=1,linetype="dashed")+ theme_light()+theme(legend.position = "none")
+        g56<-ggplot(data.frame(x=person.df[5,], y=person.df[6,], variables=var.names), aes(x=x, y=y, label=variables, color=variables)) + geom_point()+ geom_text(size=3, vjust=-1) + xlab("visit 5") + ylab("visit 6") + ggtitle(paste0("Distance 5-6: ",round(dist56,2))) + geom_abline(intercept=0, slope=1,linetype="dashed")+ theme_light()+theme(legend.position = "none")
+        grid.arrange(g12, g23, g34, g45,g56,g, ncol=3, top=textGrob(paste0(subj, ", mean distance=", round(mean.dist,2)), gp=gpar(fontsize=15,fontface="bold")))
+      } else {
+        grid.arrange(g12, g23, g34 ,g, ncol=2, top=textGrob(paste0(subj, ", mean distance=", round(mean.dist,2)), gp=gpar(fontsize=15,fontface="bold")))
+      }
+    }
+    else {
+      g12<-ggplot(data.frame(x=person.df[1,], y=person.df[2,], variables=var.names), aes(x=x, y=y, label=variables, color=variables)) + geom_point() + xlab("visit 1") + ylab("visit 2") + ggtitle(paste0("Distance 1-2: ",round(dist12,2))) + geom_abline(intercept=0, slope=1,linetype="dashed")+ theme_light()+theme(legend.position = "none")
+      g23<-ggplot(data.frame(x=person.df[2,], y=person.df[3,], variables=var.names), aes(x=x, y=y, label=variables, color=variables)) + geom_point() + xlab("visit 2") + ylab("visit 3") + ggtitle(paste0("Distance 2-3: ",round(dist23,2))) + geom_abline(intercept=0, slope=1,linetype="dashed")+ theme_light()+theme(legend.position = "none")
+      g34<-ggplot(data.frame(x=person.df[3,], y=person.df[4,], variables=var.names), aes(x=x, y=y, label=variables, color=variables)) + geom_point() + xlab("visit 3") + ylab("visit 4") + ggtitle(paste0("Distance 3-4: ",round(dist34,2))) + geom_abline(intercept=0, slope=1,linetype="dashed")+ theme_light()+theme(legend.position = "none")
+      if(length(unique.visits)==6) {
+        g45<-ggplot(data.frame(x=person.df[4,], y=person.df[5,], variables=var.names), aes(x=x, y=y, label=variables, color=variables)) + geom_point() + xlab("visit 4") + ylab("visit 5") + ggtitle(paste0("Distance 4-5: ",round(dist45,2))) + geom_abline(intercept=0, slope=1,linetype="dashed")+ theme_light()+theme(legend.position = "none")
+        g56<-ggplot(data.frame(x=person.df[5,], y=person.df[6,], variables=var.names), aes(x=x, y=y, label=variables, color=variables)) + geom_point() + xlab("visit 5") + ylab("visit 6") + ggtitle(paste0("Distance 5-6: ",round(dist56,2))) + geom_abline(intercept=0, slope=1,linetype="dashed")+ theme_light()+theme(legend.position = "none")
+        grid.arrange(g12, g23, g34, g45,g56,g, ncol=3, top=textGrob(paste0(subj, ", mean distance=", round(mean.dist,2)), gp=gpar(fontsize=15,fontface="bold")))
+      } else {
+        grid.arrange(g12, g23, g34 ,g, ncol=2, top=textGrob(paste0(subj, ", mean distance=", round(mean.dist,2)), gp=gpar(fontsize=15,fontface="bold")))
+      }
+    }
+  }
+  dev.off()
+}
+
+plot.umap.gender.circle.method<-function(x,y,subject.visit,method, num) {
+  subject.vec<-substring(subject.visit, 0,4)
+  
+  sex.vec<-unlist(filter(wellness.data, subject_id %in% subject.vec)$sex)
+  sex.color.vec<-sex.vec
+  sex.color.vec[which(sex.vec=="f")]<-"#F8766D"
+  sex.color.vec[which(sex.vec=="m")]<-"#00BFC4"
+  
+  title<-paste0(method, "\nNumber of subjects=",length(unique(subject.vec)), "\nn=",num)
+  data.df<-data.frame(x=x, y=y,  subject=subject.vec, subject.visit=subject.visit, gender=sex.vec)
+  
+  g3<-ggplot(data.df, aes(x=x, y=y)) +geom_point(size=4, alpha=0.3,aes(color=gender))# +geom_path(aes(group=subject.vec,color=gender)) 
+  g3<-g3 +xlab("UMAP1")+ylab("UMAP2")+ggtitle(title)+theme_light()+theme(legend.position="none")+ scale_color_manual(values=c("#00BFC4", "#F8766D" ))
+  g3<-g3 + stat_ellipse(aes(color=gender, group = gender),type = "norm", linetype = "dotted", show.legend = F) 
+  g3<-g3  + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(),axis.line = element_line(colour = "black"))
+  
+  return (g3)
+}
+
+######################## 
+#### CLINICAL DATA 
+######################## 
+
+wellness.t2d<-read.table("S3.Wellness.T2D_CRF_Clinchem.txt", header=T, sep="\t")
+wellness.t2d$VisitName<-as.numeric(substring(wellness.t2d$VisitName, 7))
+names(wellness.t2d)[1:2]<-c("subject_id", "visit")
+wellness.t2d<-arrange(wellness.t2d, subject_id)
+wellness.t2d$TNT<-as.numeric(as.character(wellness.t2d$TNT))
+wellness.t2d$TNT[which(wellness.t2d$subject_id=="1-2838" & wellness.t2d$visit==4)]<-1 #står som <5 i filen men ska vara 1 enligt förra filen
+wellness.t2d$Gluc[which(wellness.t2d$subject_id=="1-3333" & wellness.t2d$visit==4)]<-6.0 #svimmade men vi avrundar medelvärdet av de andra värdena då allt verkade nornalt
+#mean(wellness.t2d$Gluc[which(wellness.t2d$subject_id=="1-3333")], na.rm=T)
+
+wellness.t2d$Study = factor(wellness.t2d$Study,levels(wellness.t2d$Study)[2:1])
+visit.cols<-c("#e41a1c","#377eb8","#4daf4a","#984ea3","#ff7f00","turquoise")#"#f781bf")
+names(visit.cols)<-1:6
+wellness.t2d$visit<-as.factor(wellness.t2d$visit)
+
+#Remove T2D
+wellness.df.tot<-filter(wellness.t2d, Study=="Wellness")
+wellness.df.tot$subject_id<-as.numeric(substring(wellness.df.tot$subject_id, 3))
+
+#na.row.pos<-which(apply(wellness.df.tot, 1, function(x) length(which(is.na(x))))>0)
+#wellness.df.tot.no.na<-wellness.df.tot[-na.row.pos,]
+
+#Remove incomplete subjects
+num.visits<-table(wellness.df.tot$subject_id)
+remove.subjects<-names(which(num.visits!=6))
+wellness.df.tot<-filter(wellness.df.tot, !subject_id %in% remove.subjects)
+wellness.df<-wellness.df.tot[,-c(1:6)]
+
+clinchem.df<-wellness.df[,-c(1:11)]
+clin.var<-names(clinchem.df)
+
+clinchem.df.log<-log10(clinchem.df+1)
+clinchem.df.scale<-scale(clinchem.df)
+clinchem.df.log.scale<-apply(clinchem.df.log, 2, scale)
+
+clin.subject.id<-unique(wellness.df.tot$subject_id)
+clin.subject.visit<-paste0(wellness.df.tot$subject_id,"_",wellness.df.tot$visit)
+
+#Perform UMAP, PCA and tSNE
+umap.clin.log.scale = umap(clinchem.df.log.scale)
+umap.clin.scale = umap(clinchem.df.scale)
+
+#clin.distance.df.sort<-clin.distance.df[order(clin.distance.df$mean.dist, decreasing = T),]
+#clin.distance.df.melt<-clin.distance.df.melt[,-5]
+#save(clin.distance.df.melt, file="clin.distance.df.melt.Robject")
+
+
+###############
+### Metabolomics
+###############
+
+
+#GC-MS
+metabol.gc.data<-read.table("metabolomics_expr.GCMS_20190520.v1234.txt", header=T, sep="\t")
+metabol.gc.meta<-read.table("variables.metadata.metabolomics.expr.GCMS_20190520.txt", header=T, sep="\t")
+metabol.gc.visit.subject<-as.character(metabol.gc.data[,1])
+metabol.gc.visit<-substring(metabol.gc.visit.subject, 2,2)
+metabol.gc.subject<-substring(metabol.gc.visit.subject, 4,8)
+
+num<-table(metabol.gc.subject)
+incomplete<-names(num[which(num!=4)])
+rem.pos<-which(metabol.gc.subject %in% incomplete)
+metabol.gc.data<-metabol.gc.data[-rem.pos,]
+metabol.gc.visit.subject<-as.character(metabol.gc.data[,1])
+metabol.gc.visit<-substring(metabol.gc.visit.subject, 2,2)
+metabol.gc.subjects<-substring(metabol.gc.visit.subject, 4,8)
+
+metabol.gc.subjects.unique<-unique(metabol.gc.subjects)
+metabol.gc.data.log<-log2(metabol.gc.data[,-1]+1)
+metabol.gc.data.log.uv<-scale(metabol.gc.data.log)
+colnames(metabol.gc.data.log.uv)<-metabol.gc.meta$name
+
+#LC-MS
+metabol.lc.data<-read.table("metabolomics_expr.LCMS_20190520.v1234.txt", header=T, sep="\t")
+metabol.lc.meta<-read.table("variables.metadata.metabolomics.expr.LCMS_20190520.txt", header=T, sep="\t")
+metabol.lc.visit.subject<-as.character(metabol.lc.data[,1])
+metabol.lc.visit<-substring(metabol.lc.visit.subject, 2,2)
+metabol.lc.subject<-substring(metabol.lc.visit.subject, 4,8)
+
+num<-table(metabol.lc.subject)
+incomplete<-names(num[which(num!=4)])
+rem.pos<-which(metabol.lc.subject %in% incomplete)
+metabol.lc.data<-metabol.lc.data[-rem.pos,]
+metabol.lc.visit.subject<-as.character(metabol.lc.data[,1])
+metabol.lc.visit<-substring(metabol.lc.visit.subject, 2,2)
+metabol.lc.subjects<-substring(metabol.lc.visit.subject, 4,8)
+
+metabol.lc.subjects.unique<-unique(metabol.lc.subjects)
+metabol.lc.data.log<-log2(metabol.lc.data[,-1]+1)
+metabol.lc.data.log.uv<-scale(metabol.lc.data.log)
+
+#which(!colnames(metabol.lc.data.log.uv) %in% metabol.lc.meta$variable)
+#which(!metabol.lc.meta$variable %in% colnames(metabol.lc.data.log.uv))
+
+#metabol.lc.data.log.uv<-read.table("umap.input.metabo.lc.log.scale.txt", header=T, sep="\t")
+colnames(metabol.lc.data.log.uv)<-metabol.lc.meta$name
+
+
+#LIPIDOMICS
+lipid.data<-read.table("lipidomics_expr.LCMS.20190520.v1234.txt", header=T, sep="\t")
+lipid.meta<-read.table("variables.metadata.lipidomics.20190520.v1234.txt", header=T, sep="\t")
+
+lipid.visit.subject<-as.character(lipid.data[,1])
+lipid.visit<-substring(lipid.visit.subject, 2,2)
+lipid.subject<-substring(lipid.visit.subject, 4,8)
+
+num<-table(lipid.subject)
+incomplete<-names(num[which(num!=4)])
+#rem.pos<-which(lipid.subject %in% incomplete)
+#lipid.data<-lipid.data[-rem.pos,]
+lipid.visit.subject<-as.character(lipid.data[,1])
+lipid.visit<-substring(lipid.visit.subject, 2,2)
+lipid.subjects<-substring(lipid.visit.subject, 4,8)
+lipid.subjects.unique<-unique(lipid.subjects)
+
+#Remove NA
+na.pos<-which(apply(lipid.data, 2, function(x) length(which(is.na(x)))>0))
+lipid.data<-lipid.data[,-na.pos]
+lipid.meta<-lipid.meta[-na.pos,]
+
+lipid.data.log<-log2(lipid.data[,-1]+1)
+lipid.data.log.uv<-scale(lipid.data.log)
+colnames(lipid.data.log.uv)<-lipid.meta$name
+
+
+#Perform UMAP, PCA and tSNE
+umap.metabol.gc.log.scale = umap(metabol.gc.data.log.uv)
+umap.metabol.lc.log.scale = umap(metabol.lc.data.log.uv)
+umap.lipid.log.scale = umap(lipid.data.log.uv)
+
+
+#####
+#16S
+########## KOD SOM LINN KÖR
+unifrac.dist<-read.table("unweighted_unifrac_dm_All.txt")
+temp=strsplit(rownames(unifrac.dist),"_")
+mapp.dist=as.data.frame(matrix(unlist(temp), ncol=2, byrow=TRUE))
+rownames(mapp.dist)=rownames(unifrac.dist)
+colnames(mapp.dist)=c("ind.n","timepoint")
+mapp.dist$ind.n<-as.factor(mapp.dist$ind.n)
+vec<-table(as.vector(mapp.dist$ind.n))
+remove.sub<-which(vec!=4)
+unifrac.dist.rem<-unifrac.dist
+for(j in 1:length(remove.sub)) {
+  sub<-names(remove.sub)[j]
+  pos.row<-grep(sub, rownames(unifrac.dist.rem))
+  pos.col<-grep(sub, colnames(unifrac.dist.rem))
+  unifrac.dist.rem<-unifrac.dist.rem[-pos.row, -pos.col]
+}
+vec<-rownames(unifrac.dist.rem)
+visit.16s<-substring(vec, 7)
+subject.16s<-substring(vec,0,4)
+
+unifrac.dist.rem<-as.dist(unifrac.dist.rem)
+#metagenom.tsne2=tsne(unifrac.dist.rem)
+
+#Får ej detta att funka i nuvarande version
+#umap.defaults$input <- 'dist'
+#umap.metagenom = umap(unifrac.dist.rem,config = umap.defaults)
+#umap.plot.data <- umap.metagenom$layout
+
+#Read in Wen's file with UMAP results
+umap.16s<-read.table("umap_16s.txt", sep="\t", header=T)
+meta16<-read.table("table_betadiversity_individual_16S_unifrac.txt", sep="\t",header=T)
+names(meta16)[1]<-"subject_id"
+
+
+#### Metagenomics instead of 16S
+load("dist.braycurtis.matrix.WG.strain.Rdata")
+metagenom.dist<-dist.matrix.sp
+umap.defaults$input <- 'dist'
+metagenom.subject.visit<-colnames(metagenom.dist)
+visit.metagenom<-substring(metagenom.subject.visit, 7)
+subject.metagenom<-substring(metagenom.subject.visit,0,4)
+
+umap.metagenom = umap(metagenom.dist,config = umap.defaults)
+
+counts_strain20M<-read.table("combinedGenomesALL.20M.species.fixed.txt", header=T, sep="\t")
+colnames(counts_strain20M)
+
+############
+#####CYTOF data
+#############
+cytof.counts<-read.csv("inputdata_BatchCorr_53pop.csv",sep=",",header=T)
+names(cytof.counts)[1]<-"subject_visit"
+names(cytof.counts)[4]<-"subject_id"
+
+cytof.classification<-read.table("cell_pop_codes.txt", header=T, sep="\t")
+cytof.classification<-dplyr::tbl_df(cytof.classification)
+
+#Ta bort personer som inte har 4 besök
+num.sub.vec<-table(cytof.counts$subject_id)
+remove.sub<-names(which(num.sub.vec!=4))
+
+cytof.counts.red<-filter(cytof.counts, !(subject_id %in% as.numeric(remove.sub)))
+cytof.counts.cells<-select(cytof.counts.red, -batch.Batch, -X,-Quarter,-Month, -Gender, -Age,-subject_visit,-Visit,-subject_id)
+
+num.cells<-ncol(cytof.counts.cells)
+cell.names<-names(cytof.counts.cells)
+num.cytof.sub<-length(unique(cytof.counts.red$subject_id))
+cytof.subjects<-unique(cytof.counts.red$subject_id)
+
+cytof.count.mat<-as.matrix(cytof.counts.cells)
+rownames(cytof.count.mat)<-cytof.counts.red$subject_id
+cytof.count.mat.log<-log2(cytof.count.mat+1)
+cytof.count.mat.log.scale<-scale(cytof.count.mat.log)
+
+umap.cytof = umap(cytof.count.mat.log.scale)
+cytof.visit<-substring(as.vector(cytof.counts.red$Visit),2)
+cytof.subject<-as.vector(cytof.counts.red$subject_id)
+
+######### Transcriptomics
+rna.data<-read.table("wellness.RNAseq.limma.exprs.final.txt", header=T, sep="\t")
+rna.subject<-rna.data$subject
+rna.visit<-rna.data$visit
+rna.data<-rna.data[,-c(1:2)]
+rna.data.log<-log2(rna.data+1)
+rna.data.log.scale<-scale(rna.data.log)
+umap.rna = umap(rna.data.log.scale)
+
+##################### Run all functions
+
+plot.umap.all.methods(umap.clin.log.scale$layout[,1], umap.clin.log.scale$layout[,2], clin.subject.visit, "Clinical variables log scale", ncol(clinchem.df.log.scale))
+#plot.umap.all.methods(umap.clin.scale$layout[,1], umap.clin.scale$layout[,2], clin.subject.visit, "Clinical variables scale", ncol(clinchem.df.scale))
+plot.umap.all.methods(umap.metabol.gc.log.scale$layout[,1], umap.metabol.gc.log.scale$layout[,2], paste0(metabol.gc.subjects,"_",metabol.gc.visit),"Metabolomics GC-MS log scale", ncol(metabol.gc.data.log.uv))
+plot.umap.all.methods(umap.metabol.lc.log.scale$layout[,1], umap.metabol.lc.log.scale$layout[,2], paste0(metabol.lc.subjects,"_",metabol.lc.visit),"Metabolomics LC-MS log scale", ncol(metabol.lc.data.log.uv))
+plot.umap.all.methods(umap.lipid.log.scale$layout[,1], umap.lipid.log.scale$layout[,2], paste0(lipid.subjects,"_",lipid.visit),"Lipdomics LC-MS log scale", ncol(lipid.data.log.uv))
+plot.umap.all.methods(umap.cytof$layout[,1],umap.cytof$layout[,2], paste0(cytof.subject, "_",cytof.visit), "CyTOF", ncol(cytof.count.mat.log.scale))
+plot.umap.all.methods(umap.16s$umap1, umap.16s$umap2, paste0(subject.16s, "_",visit.16s), "16S", 1465)
+plot.umap.all.methods(umap.metagenom$layout[,1], umap.metagenom$layout[,2], paste0(subject.metagenom, "_",visit.metagenom), "Metagenomics", "385 features")
+plot.umap.all.methods(umap.rna$layout[,1], umap.rna$layout[,2], paste0(rna.subject, "_",rna.visit), "Transcriptomics",ncol(rna.data.log.scale))
+
+#clin.distance.df<-get.distance.data(clinchem.df.log.scale, clin.subject.visit, "Clinical chemistry")
+clin.distance.list<-get.distance.data(clinchem.df.log.scale, clin.subject.visit, "Clinical chemistry")
+clin.distance.df<-as.data.frame(clin.distance.list[[1]])
+clin.distance.df.melt<-as.data.frame(clin.distance.list[[2]])
+clin.distance.df.sort<-clin.distance.df[order(clin.distance.df$mean.dist, decreasing = T),]
+
+metabol.gc.distance.list<-get.distance.data(metabol.gc.data.log.uv,  paste0(metabol.gc.subjects,"_",metabol.gc.visit), "Metabolomics GC-MS")
+metabol.gc.distance.df<-as.data.frame(metabol.gc.distance.list[[1]])
+metabol.gc.distance.df.melt<-as.data.frame(metabol.gc.distance.list[[2]])
+metabol.gc.distance.df.sort<-metabol.gc.distance.df[order(metabol.gc.distance.df$mean.dist, decreasing = T),]
+
+metabol.lc.distance.list<-get.distance.data(metabol.lc.data.log.uv,  paste0(metabol.lc.subjects,"_",metabol.lc.visit), "Metabolomics LC-MS")
+metabol.lc.distance.df<-as.data.frame(metabol.lc.distance.list[[1]])
+metabol.lc.distance.df.melt<-as.data.frame(metabol.lc.distance.list[[2]])
+metabol.lc.distance.df.sort<-metabol.lc.distance.df[order(metabol.lc.distance.df$mean.dist, decreasing = T),]
+
+lipid.distance.list<-get.distance.data(lipid.data.log.uv,  paste0(lipid.subjects,"_",lipid.visit), "Lipidomics")
+lipid.distance.df<-as.data.frame(lipid.distance.list[[1]])
+lipid.distance.df.melt<-as.data.frame(lipid.distance.list[[2]])
+lipid.distance.df.sort<-lipid.distance.df[order(lipid.distance.df$mean.dist, decreasing = T),]
+
+cytof.distance.list<-get.distance.data(cytof.count.mat.log.scale,  paste0(cytof.subject,"_",cytof.visit), "Immune cytome")
+cytof.distance.df<-as.data.frame(cytof.distance.list[[1]])
+cytof.distance.df.melt<-as.data.frame(cytof.distance.list[[2]])
+cytof.distance.df.sort<-cytof.distance.df[order(cytof.distance.df$mean.dist, decreasing = T),]
+
+meta16.distance.df<-meta16[,c(1,8,2,3,4)]
+colnames(meta16.distance.df)<-c("subject_id","mean.dist","dist12","dist23","dist34")
+meta16.distance.df.melt<-melt(meta16.distance.df,  id.vars=c("subject_id","mean.dist"))
+names(meta16.distance.df.melt)[3:4]<-c("visits","distance")
+meta16.distance.df.melt$subject_id<-as.factor(meta16.distance.df.melt$subject_id)
+meta16.distance.df.melt<-cbind(meta16.distance.df.melt, rep("16S",nrow(meta16.distance.df.melt)))
+names(meta16.distance.df.melt)[5]<-"method"
+
+
+matrix(0,)
+
+plot.distances(meta16.distance.df, meta16.distance.df.melt, "16s", paste0(subject.16s, "_",visit.16s), )
+
+#Distance file for metagenomics
+metagenom.distance.df<-read.table("metagenomics_within_dist_WG.csv", header=T, sep=",")
+metagenom.distance.df<-metagenom.distance.df[,-c(5:7)]
+metagenom.distance.df<-metagenom.distance.df[,c(1,5,2:4)]
+colnames(metagenom.distance.df)<-c("subject_id","mean.dist","dist12","dist23","dist34")
+metagenom.distance.df.melt<-melt(metagenom.distance.df,  id.vars=c("subject_id","mean.dist"))
+names(metagenom.distance.df.melt)[3:4]<-c("visits","distance")
+metagenom.distance.df.melt$subject_id<-as.factor(metagenom.distance.df.melt$subject_id)
+metagenom.distance.df.melt<-cbind(metagenom.distance.df.melt, rep("Metagenomics",nrow(metagenom.distance.df.melt)))
+names(metagenom.distance.df.melt)[5]<-"method"
+plot.distances(metagenom.distance.df, metagenom.distance.df.melt, "Metagenomics",paste0(subject.metagenom,"_".visit.metagenom))
+
+
+rna.distance.list<-get.distance.data(rna.data.log.scale, paste0(rna.subject, "_",rna.visit), "Transcriptomics")
+rna.distance.df<-as.data.frame(rna.distance.list[[1]])
+rna.distance.df.melt<-as.data.frame(rna.distance.list[[2]])
+rna.distance.df.sort<-rna.distance.df[order(rna.distance.df$mean.dist, decreasing = T),]
+
+
+#Save all final files
+write.table(cytof.count.mat.log.scale, file="umap.input.cytof.log.scale.txt", quote=F, sep="\t")
+write.table(clinchem.df.log.scale, file="umap.input.cytof.log.scale.txt", quote=F, sep="\t")
+write.table(metabol.gc.data.log.uv, file="umap.input.cytof.log.scale.txt", quote=F, sep="\t")
+write.table(metabol.lc.data.log.uv, file="umap.input.cytof.log.scale.txt", quote=F, sep="\t")
+write.table(lipid.data.log.uv, file="umap.input.cytof.log.scale.txt", quote=F, sep="\t")
+
+### Add all distance files
+all.distance.df.melt<-rbind(clin.distance.df.melt, metabol.gc.distance.df.melt, metabol.lc.distance.df.melt,lipid.distance.df.melt,cytof.distance.df.melt, meta16.distance.df.melt, metagenom.distance.df.melt, rna.distance.df.melt)
+
+
+num.na<-length(which(is.na(all.distance.df.melt$distance)))
+na.pos<-which(is.na(all.distance.df.melt$distance))
+#NA due to missing visit 5-6
+all.distance.df.melt<-all.distance.df.melt[-na.pos,]
+
+sex.df<-select(wellness.data, subject_id, sex)
+all.distance.df.melt<-merge(all.distance.df.melt, sex.df, by="subject_id")
+all.distance.df.melt$subject.dist.visits<-NA
+all.distance.df.melt$subject.dist.visits<-paste0(all.distance.df.melt$subject_id, "_", all.distance.df.melt$visits)
+
+all.distance.df.melt.clean<-all.distance.df.melt[,c(1,3,4,5)]
+all.distance.df.wide<-dcast(all.distance.df.melt.clean, formula=subject_id + visits ~ method, value.var="distance")
+
+all.distance.df.wide.complete<-all.distance.df.wide[apply(all.distance.df.wide, 1, function(x) !any(is.na(x))),]
+
+num.na.per.sample<-apply(all.distance.df.wide, 1, function(x) length(which(is.na(x))))
+num.na.per.method<-apply(all.distance.df.wide, 2, function(x) length(which(is.na(x))))
+
+names(num.na.per.sample)<-all.distance.df.wide$subject_id
+
+table(num.na.per.sample)
+
+#Do the same for mean values
+all.mean.distance.df<-all.distance.df.melt[,c(1,2,5,6)]
+all.mean.distance.df.wide<-dcast(all.mean.distance.df, formula= subject_id + sex ~  method, value.var=mean.dist)
+all.mean.distance.df<-all.mean.distance.df[!duplicated(all.mean.distance.df),]
+
+all.distance.df.wide.complete<-all.distance.df.wide[apply(all.distance.df.wide, 1, function(x) !any(is.na(x))),]
+
+
+#all.distance.df.melt %>% group_by(method) %>% 
+
+#write.table(method.dist.df.per.visit, file="method.distance.per.visit.wellness.txt", sep="\t", quote=F)
+
+#Gör PCA med alla metoder medelvärde
+#method.dist.mat.mean<-method.dist.mat.mean[,-6] #tills vi har 16s
+#method.dist.mat.mean.no.na.scale<-scale(method.dist.mat.mean.no.na)
+
+
+#method.7.overlap.sex.col[which(method.7.overlap.sex=="f")]<-"#F8766D"
+#method.7.overlap.sex.col[which(method.7.overlap.sex=="m")]<-"#00BFC4"
+
+
+pca<- prcomp(all.distance.df.wide.complete[,-c(1,2)])
+rot<-pca$r
+scores<-pca$x
+
+#method.cols<-c("#66c2a5",  "#fc8d62","#8da0cb", "#e78ac3",  "#a6d854",  "#ffd92f",  "#e5c494","#b3b3b3")
+method.cols<-rainbow(10)
+pdf(file="pca.10.methods.mean.pdf",w=10,h=6)
+layout(matrix(nrow=1, 1:2, byrow=T))
+plot(rot[,1:2],pch="", main="Loadings") #col=group.cols, )
+text(rot[,1:2], colnames(method.dist.mat.mean), col=method.cols,cex=0.8)
+#legend("bottomright",class.names, fill=proteinclass.colors,  bty="n",cex=0.6)
+plot(scores[,1:2], pch="", main="Scores")
+text(scores[,1:2],as.character(rownames(method.dist.mat.mean.no.na)), col=method.7.overlap.sex.col,cex=0.8)
+dev.off()
+
+write.table(method.dist.mat.mean, file="method.dist.mat.wellness.txt", quote=F, sep="\t")
+
+method.cols.visit<-rep(method.cols,each=3)
+
+#Gör PCA med alla metoder och visiter skalas
+
+#method.dist.mat.per.visit.scale.no.na.scale<-scale(method.dist.mat.per.visit.scale.no.na)
+pca<- prcomp(method.dist.mat.per.visit.scale.no.na, scale.=T)
+rot<-pca$r
+scores<-pca$x
+pdf(file="pca.all.methods.visit.pdf",w=10,h=6)
+layout(matrix(nrow=1, 1:2, byrow=T))
+plot(rot[,1:2],pch="", main="Loadings") #col=group.cols, )
+text(rot[,1:2], colnames(method.dist.mat.per.visit.scale.no.na), col=method.cols.visit,cex=0.8)
+#legend("bottomright",class.names, fill=proteinclass.colors,  bty="n",cex=0.6)
+plot(scores[,1:2], pch="", main="Scores")
+text(scores[,1:2],as.character(rownames(method.dist.mat.per.visit.scale.no.na)), col=method.7.overlap.sex.col,cex=0.8)
+dev.off()
+
+
+#Samam sak med tSNE
+r = Rtsne(method.dist.mat.per.visit.scale.no.na, perplexity = 20)
+r.met = Rtsne(t(method.dist.mat.per.visit.scale.no.na), perplexity = 6)
+
+pdf(file="tsne.all.methods.visit.pdf",w=10,h=6)
+layout(matrix(nrow=1, 1:2, byrow=T))
+plot(r.met$Y[,1:2], pch="") 
+text(r.met$Y[,1:2], colnames(method.dist.mat.per.visit.scale.no.na),col=method.cols.visit,cex=0.8) 
+plot(r$Y[,1:2], pch="") 
+text(r$Y[,1:2], rownames(method.dist.mat.per.visit.scale.no.na), col=method.7.overlap.sex.col,cex=0.8) 
+dev.off()
+
+###### Gör en linjeplott med varje metods rankade personer
+
+method.names<-as.vector(unique(method.dist.df.per.visit$method))
+method.names<-method.names[-which(method.names=="RNAseq")]
+method.names<-method.names[-which(method.names=="target")]
+
+method.dist.df.per.visit.no.rna<-filter(method.dist.df.per.visit, method!="RNAseq")
+method.dist.df.per.visit.no.rna<-filter(method.dist.df.per.visit.no.rna, method!="target")
+#method.dist.df.per.visit.1.2<-filter(method.dist.df.per.visit, visits=="1-2")
+method.dist.mat<-matrix(nrow=0, ncol=3)
+colnames(method.dist.mat)<-c("subject_id", "rank","method")
+for(i in 1:length(method.names)) {
+  met<-method.names[i]
+  df<-filter(method.dist.df.per.visit.no.rna, method==met)
+  #df<-method.dist.df.per.visit[which(method.dist.df.per.visit$method==met),]
+  df.1.2<-df[which(df$visits=="1-2"),]
+  df.1.2$rank<-rank(df.1.2$value)
+  method.dist.mat<-rbind(method.dist.mat, select(df.1.2, subject_id, rank, method))
+}
+method.dist.df<-as.data.frame(method.dist.mat)
+
+method.dist.matrix<-dcast(method.dist.df, subject_id ~ method, value.var="rank")
+method.dist.matrix.mean<-apply(method.dist.matrix[,-1], 1, mean, na.rm=T)
+names(method.dist.matrix.mean)<-method.dist.matrix$subject_id
+method.dist.matrix.sorted<-method.dist.matrix[order(method.dist.matrix.mean),]
+
+load("states.Rdata")
+states
+
+rownames(method.dist.matrix.sorted)<-as.character(method.dist.matrix.sorted$subject_id)
+method.dist.matrix.sorted<-method.dist.matrix.sorted[,-1]
+
+pdf("slopegraph.methods.euc.distance.pdf",w=10,h=20)
+slopegraph(method.dist.matrix.sorted, col.lines=rep(rainbow(20), 5))
+dev.off()
+
+ggslopegraph(method.dist.df[,c(2,1,3)])
+
+# Plot per person
+
+#find who is in all
+method.dist.subject.method<-select(method.dist.df.per.visit.no.rna, subject_id, method)
+method.dist.subject.method<-method.dist.subject.method[!duplicated(method.dist.subject.method),]
+num.met<-table(method.dist.subject.method$subject_id)
+all.subject.ids<-names(num.met)[which(num.met==max(num.met))]
+
+method.dist.matrix.sorted.all.methods<-method.dist.matrix.sorted[which(rownames(method.dist.matrix.sorted) %in% all.subject.ids),]
+
+method.dist.matrix.sorted.all.methods.new.rank<-apply(method.dist.matrix.sorted.all.methods, 2, rank)#,ties.method="random")
+
+method.dist.matrix.sorted.all.methods.new.rank<-as.data.frame(method.dist.matrix.sorted.all.methods.new.rank)
+
+pdf("slopegraph.methods.euc.distance.complete.subjects.pdf",w=10,h=15)
+slopegraph(method.dist.matrix.sorted.all.methods.new.rank,, col.lines=rainbow(77))
+#slopegraph(method.dist.matrix.sorted.all.methods, col.lines=rainbow(77))
+
+dev.off()
+
+
+method.dist.df.per.visit.no.rna$subject_id<-as.numeric(as.character(method.dist.df.per.visit.no.rna$subject_id))
+method.dist.df.per.visit.no.rna.all.subjects<-filter(method.dist.df.per.visit.no.rna, subject_id %in% all.subject.ids)
+
+
+
+###########
+method.dist.mat.per.visit.scale<-scale(method.dist.mat.per.visit)
+method.dist.mat.per.visit.scale.melt<-melt(method.dist.mat.per.visit.scale.complete)
+names(method.dist.mat.per.visit.scale.melt)<-c("subject_id","method.visit","value")
+method.dist.mat.per.visit.scale.melt$visit<-substr(method.dist.mat.per.visit.scale.melt$method.visit, start=nchar(as.character(method.dist.mat.per.visit.scale.melt$method.visit))-1, stop=nchar(as.character(method.dist.mat.per.visit.scale.melt$method.visit)))
+method.dist.mat.per.visit.scale.melt$value<-as.numeric(method.dist.mat.per.visit.scale.melt$value)
+
+method.dist.mat.per.visit.scale.paper<-method.dist.mat.per.visit.scale[,-grep("target", colnames(method.dist.mat.per.visit.scale))]
+method.dist.mat.per.visit.scale.paper<-method.dist.mat.per.visit.scale.paper[,-grep("rna", colnames(method.dist.mat.per.visit.scale.paper))]
+
+na.pos<-which(apply(method.dist.mat.per.visit.scale.paper, 1, function(x) any(is.na(x))))
+method.dist.mat.per.visit.scale.paper<-method.dist.mat.per.visit.scale.paper[-na.pos,]
+
+method.dist.mat.per.visit.scale<-scale(method.dist.mat.per.visit.scale.paper)
+method.dist.mat.per.visit.scale.melt<-melt(method.dist.mat.per.visit.scale)
+names(method.dist.mat.per.visit.scale.melt)<-c("subject_id","method.visit","value")
+method.dist.mat.per.visit.scale.melt$visit<-substr(method.dist.mat.per.visit.scale.melt$method.visit, start=nchar(as.character(method.dist.mat.per.visit.scale.melt$method.visit))-1, stop=nchar(as.character(method.dist.mat.per.visit.scale.melt$method.visit)))
+method.dist.mat.per.visit.scale.melt$value<-as.numeric(method.dist.mat.per.visit.scale.melt$value)
+method.dist.mat.per.visit.scale.melt$method<-substr(method.dist.mat.per.visit.scale.melt$method.visit, start=0, stop=nchar(as.character(method.dist.mat.per.visit.scale.melt$method.visit))-2)
+
+ggplot(filter(method.dist.mat.per.visit.scale.melt, visit==12), aes(x=method, y=value, group=subject_id)) + geom_quasirandom() #+ geom_line()
+ggplot(method.dist.mat.per.visit.scale.melt, aes(x=method, y=value, group=subject_id)) + geom_point()+ geom_line() +facet_wrap(~visit)
+ggplot(method.dist.mat.per.visit.scale.melt, aes(x=method, y=value, group=subject_id, label=subject_id, color=colors)) + geom_text()+ geom_line() +facet_wrap(~visit)
+
+##räkna ut medel scaled distance
+method.dist.mat.per.visit.scale.melt.no.autoantibody<-filter(method.dist.mat.per.visit.scale.melt, method!="auto")
+mean.method.distance<-method.dist.mat.per.visit.scale.melt.no.autoantibody %>% group_by(method, subject_id) %>% summarize(mean.distance=mean(value))
+mean.method.distance$colors<-rep("black", nrow(mean.method.distance))
+#max.subject<-unique(mean.method.distance$subject_id[which(mean.method.distance$mean.distance %in% sort(mean.method.distance$mean.distance, decreasing = T)[1:10])])
+max.subject<-unique(mean.method.distance$subject_id[which(mean.method.distance$mean.distance > 2)])
+for(i in 1:length(max.subject)) {
+  mean.method.distance$colors[which(mean.method.distance$subject_id==max.subject[i])]<-max.subject[i]
+}
+glimpse(mean.method.distance)
+mean.method.distance$method<-as.factor(mean.method.distance$method)
+#mean.method.distance$method<-factor(mean.method.distance$method, levels(mean.method.distance$method)[c(3,6,1,5,4,2)])
+mean.method.distance$method<-factor(mean.method.distance$method, levels(mean.method.distance$method)[c(2,5,4,3,1)])
+
+cols<-c("#e41a1c","#377eb8","#4daf4a","#984ea3","#ff7f00","#ffff33","#a65628","#f781bf")
+cols<-c("#1b9e77","#d95f02","#7570b3","#e7298a","#66a61e","#e6ab02","#a6761d","#666666")
+cols<-c("cyan3","#d95f02","#7570b3","deeppink","#66a61e","#e6ab02","#a6761d","dodgerblue3")
+
+
+pdf("mean.method.distance.2.pdf", w=8, h=7)
+#ggplot(mean.method.distance,aes(x=method, y=mean.distance, group=subject_id, label=subject_id, color=colors))  + geom_point()+ geom_line() + scale_color_manual(values=c(rainbow(length(max.subject)), "grey")) + theme_light()
+ggplot(mean.method.distance,aes(x=method, y=mean.distance, group=subject_id, label=subject_id, color=colors))  + geom_point()+ geom_line() + scale_color_manual(values=c(cols, "grey")) + theme_light()
+dev.off()
+
+ggplot(mean.method.distance,aes(x=method, y=mean.distance, group=subject_id, label=subject_id, color=colors))  + geom_point()+ geom_line() + scale_color_manual(values=wellness.subject.colors) + theme_light()
+
+wellness.subject.colors<-c("#8b6fed","#55be40","#ac42be","#5ed867","#902da6","#57a621","#3c66e8","#a5c533","#ad6beb","#7cb939","#d065e1","#3dc26b","#d539a4","#90d15e","#7348bd","#b7c035","#7377ec","#d1bb38","#4c7ff1","#e89b1b","#2e8bf3","#cca430","#4455bb","#799f2b","#a153c0","#3c8d25","#ee81e3","#32a24b","#e73379","#38cc94","#a53790","#81c675","#9e7ee9","#9a9d2c","#cf83e9","#6ba149","#c75fb4","#3b772c","#e25aa4","#4b9d65","#df3952","#47cebe","#d7412d","#5fc7f2","#da6224","#4b96eb","#ac850f","#5d7ad5","#d78330","#8065c2","#c4bc59","#794896","#a3bd61","#a76abe","#767c16","#d992e2","#525e1b","#e987c7","#2c6f47","#de5482","#70c297","#ab316c","#349176","#b5344e","#3db6c0","#aa3823","#1da4cc","#ef764f","#5da3db","#ac6019","#3f5d9c","#ebab51","#675ea2","#cfb464","#aa88d3","#b18d3d","#7880c3","#8c924a","#9aa3e8","#816c2a","#cca6e7","#6b7633","#b774a7","#7ca260","#934e7d","#b7b777","#377cb1","#d79b5f","#974863","#ee9c74","#e796bb","#92652b","#e0748e","#c8986c","#a14d51","#c06a47","#db8985","#924e2a","#e26d66")
+names(wellness.subject.colors)<-wellness.data$subject_id
+
+
+method.dist.mat.per.visit.scale.melt$colors<-rep("black", nrow(method.dist.mat.per.visit.scale.melt))
+for(i in 1:length(max.subject)) {
+  method.dist.mat.per.visit.scale.melt$colors[which(method.dist.mat.per.visit.scale.melt$subject_id==max.subject[i])]<-max.subject[i]
+}
+method.dist.mat.per.visit.scale.melt$mean.distance<-method.dist.mat.per.visit.scale.melt$value
+
+method.dist.mat.per.visit.scale.melt$method<-as.factor(method.dist.mat.per.visit.scale.melt$method)
+method.dist.mat.per.visit.scale.melt$method<- factor(method.dist.mat.per.visit.scale.melt$method, levels(method.dist.mat.per.visit.scale.melt$method)[c(3,6,2,5,4,1)])
+mean.method.distance$type<-rep(1,nrow(mean.method.distance))
+method.dist.mat.per.visit.scale.melt$type<-rep(2,nrow(method.dist.mat.per.visit.scale.melt))
+mean.method.distance.add<-rbind(as.data.frame(mean.method.distance),method.dist.mat.per.visit.scale.melt[,c(5,1,7,6,8)])
+
+#g1<-ggplot(filter(mean.method.distance.add, type==1),aes(x=method, y=mean.distance, group=subject_id, label=subject_id, color=colors))  + geom_point()+ geom_line() + scale_color_manual(values=c(rainbow(length(max.subject)), "grey")) + theme_light()
+g1<-ggplot(filter(mean.method.distance.add, type==1),aes(x=method, y=mean.distance, group=subject_id, label=subject_id, color=colors))  + geom_point()+ geom_line() + scale_color_manual(values=c(cols, "grey")) + theme_light()
+g1<-g1 + geom_point(data=filter(mean.method.distance.add, type==2),  aes(x=method, y=mean.distance, group=subject_id), alpha=0.3)+ geom_line(data=filter(mean.method.distance.add, type==2),  aes(x=method, y=mean.distance, group=subject_id), alpha=0.3)
+g1
+
+#ggplot(method.dist.mat.per.visit.scale.melt, aes(x=visit, y=value, group=subject_id, label=subject_id, color=colors)) + geom_point()+ geom_line() + scale_color_manual(values=c(rainbow(length(max.subject)), "grey")) + theme_light()+facet_wrap(~method)
+
+ggplot(method.dist.mat.per.visit.scale.melt, aes(x=visit, y=value, group=subject_id, label=subject_id, color=colors)) + geom_point()+ geom_line() + scale_color_manual(values=c(rainbow(length(max.subject)), "grey")) + theme_light()+facet_wrap(~method)
+pdf("method.distance.per.visit.pdf", w=8, h=7)
+ggplot(method.dist.mat.per.visit.scale.melt, aes(x=visit, y=value, group=subject_id, label=subject_id, color=colors)) + geom_point()+ geom_line() + scale_color_manual(values=c(cols, "grey")) + theme_light()+facet_wrap(~method)
+dev.off()
+
+ggplot(method.dist.mat.per.visit.scale.melt, aes(x=method, y=value, group=subject_id, label=subject_id, color=colors)) + geom_text()+ geom_line() +facet_wrap(~visit)+ scale_color_manual(values=c(rainbow(length(max.subject)), "grey")) + theme_light()
+
+
+
+ggplot(filter(method.dist.mat.per.visit.scale.melt, visit==12), aes(x=method, y=value, group=subject_id, label=subject_id)) + geom_text()+ geom_line() +facet_wrap(~visit)
+
+
+pdf("scaled.distance.all.methods.pdf", w=10, h=10)
+ggplot(method.dist.mat.per.visit.scale.melt, aes(x=visit, y=value, group=subject_id, label=subject_id)) + geom_text(size=3)+ geom_line() + ylab("scaled distance")+facet_wrap(~method)
+dev.off()
+
+all.methods.sub<-unique(method.dist.mat.per.visit.scale.melt$subject_id)
+pdf("beeswarm.methods.distance.per.subject.pdf", w=6,h=6)
+for(i in 1:length(all.methods.sub)) {
+  subj<-all.methods.sub[i]
+  df<-filter(method.dist.mat.per.visit.scale.melt, subject_id==subj)
+  #  ggplot(df, aes(x=method.visit, y=value, color=method, group=method)) + geom_point() + geom_path()
+  g<-ggplot(df, aes(x=visit, y=value, color=method, group=method)) + geom_point() + geom_path() + ggtitle(subj)+theme_light() + ylab("scaled distance")
+  plot(g)
+}
+dev.off()

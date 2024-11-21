@@ -1,0 +1,818 @@
+### Läs in och justera allt Olink-data
+first.panels<-read_excel("Olink_nya_filer/20160351_to_54_Uhlen_NPX_NaN_20180116_edited.xlsx", sheet = "NPX Data")
+first.panels.lod<-first.panels[which(first.panels$OlinkID=="LOD"),]
+first.panels.missing.data.freq<-first.panels[grep("Missing",first.panels$OlinkID),]
+first.panels<-first.panels[-which(first.panels$OlinkID=="LOD"),]
+first.panels<-first.panels[-grep("Missing",first.panels$OlinkID),]
+subjs<-as.numeric(substring(as.character(first.panels$OlinkID), 3))
+first.panels$OlinkID<-subjs 
+names(first.panels)[1]<-"subject_id" 
+#first.panels$subject_id<-as.numeric(first.panels$subject_id)
+first.panels.info<-read_excel("Olink_nya_filer/20160351_to_54_Uhlen_NPX_NaN_20180116_edited.xlsx", sheet = "protein_info")
+first.panels.flags<-read_excel("Olink_nya_filer/20160351_to_54_Uhlen_NPX_NaN_20180116_edited.xlsx", sheet = "flag_status")
+first.panels.flags$subject_id<-NA
+first.panels.flags$subject_id<-first.panels$subject_id
+first.panels.plate<-read_excel("Olink_nya_filer/20160351_to_54_Uhlen_NPX_NaN_20180116_edited.xlsx", sheet = "plate_id")
+first.panels.plate$subject_id<-NA
+first.panels.plate$subject_id<-first.panels$subject_id
+visits<-c(20160351,20160352,20160353,20160354)
+names(visits)<-c(1,2,3,4)
+first.panels$visit<-NA
+first.panels$visit<-rep(0,nrow(first.panels))
+for(i in 1:4) {
+  first.panels$visit[grep(visits[i],first.panels.plate$`Olink CARDIOVASCULAR II`)]<-i
+}
+
+#write.table(cbind(first.panels$subject_id, first.panels$visit, first.panels.plate$`Olink CARDIOVASCULAR II`), file="olink.panel.visit.txt", sep="\t", row.names=F)
+
+first.panels<-select(first.panels,subject_id, visit, everything())
+#remove flagged subjects
+flags<-which(first.panels.flags=="Warning",arr.ind=T)
+flags<-sort(unique(flags[,"row"]))
+first.panels<-first.panels[-flags,]
+first.panels<-arrange(first.panels, subject_id)
+
+first.panels.extra<-read_excel("Olink_nya_filer/20170003_Uhlen_NPX_NaN_20180116_edited.xlsx", sheet = "NPX Data")
+first.panels.extra.lod<-first.panels.extra[which(first.panels.extra$OlinkID=="LOD"),]
+first.panels.extra.missing.data.freq<-first.panels.extra[grep("Missing",first.panels.extra$OlinkID),]
+first.panels.extra<-first.panels.extra[-which(first.panels.extra$OlinkID=="LOD"),]
+first.panels.extra<-first.panels.extra[-grep("Missing",first.panels.extra$OlinkID),]
+ctrl.pos<-grep("Control",first.panels.extra$OlinkID)
+first.panels.extra<-first.panels.extra[-ctrl.pos,]
+subj.vec<-substring(as.character(first.panels.extra$OlinkID), 3)
+subjs <- as.numeric(sapply(subj.vec, function(x) strsplit(x, "_")[[1]][1]))
+visits <- as.numeric(sapply(subj.vec, function(x) strsplit(x, "_")[[1]][2]))
+first.panels.extra$OlinkID<-subjs 
+names(first.panels.extra)[1]<-"subject_id" 
+first.panels.extra$visit<-NA
+first.panels.extra$visit<-visits
+#first.panels.extra$subject_id<-as.numeric(first.panels.extra$subject_id)
+first.panels.extra.info<-read_excel("Olink_nya_filer/20170003_Uhlen_NPX_NaN_20180116_edited.xlsx", sheet = "protein_info")
+first.panels.extra.flags<-read_excel("Olink_nya_filer/20170003_Uhlen_NPX_NaN_20180116_edited.xlsx", sheet = "flag_status")
+first.panels.extra.flags<-first.panels.extra.flags[-ctrl.pos,]
+
+first.panels.extra.flags$subject_id<-NA
+first.panels.extra.flags$subject_id<-first.panels.extra$subject_id
+first.panels.extra.plate<-read_excel("Olink_nya_filer/20170003_Uhlen_NPX_NaN_20180116_edited.xlsx", sheet = "plate_id")
+first.panels.extra.plate<-first.panels.extra.plate[-ctrl.pos,]
+first.panels.extra.plate$subject_id<-NA
+first.panels.extra.plate$subject_id<-first.panels.extra$subject_id
+
+first.panels.extra<-select(first.panels.extra,subject_id, visit, everything())
+#setdiff(names(first.panels.extra), names(first.panels))
+#remove flagged subjects
+flags<-which(first.panels.extra.flags=="Warning",arr.ind=T)
+flags<-sort(unique(flags[,"row"]))
+first.panels.extra<-first.panels.extra[-flags,]
+first.panels.extra<-arrange(first.panels.extra, subject_id)
+
+#Lägg till de extra till de första panelerna
+first.panels<-rbind(first.panels, first.panels.extra)
+first.panels<-arrange(first.panels, subject_id)
+first.panels[is.na(first.panels)]<-NA
+first.panels[,3:ncol(first.panels)]<-apply(first.panels[,3:ncol(first.panels)], 2, function(x) as.numeric(as.character(x)))
+
+
+#Ta bort de subjects som ej har 4 besök
+remove.sub<-names(which(table(first.panels$subject_id)<4))
+first.panels<-filter(first.panels, !subject_id %in% remove.sub)
+
+#Läs in barcodes för att gå från barcode till subject_id
+master.fil<-read.xls("Masterfile 161122.xls", 1)
+master.fil <- dplyr::tbl_df(master.fil) # for prettier printing
+olink.master.barcodes<-select(master.fil, Subject.ID,contains("Protein"))
+
+
+new.panels<-read_excel("Olink_nya_filer/20170057_Uhlen_NPX_NaN_20180116_edited.xlsx", sheet = "NPX Data")
+new.panels.lod<-new.panels[which(new.panels$OlinkID=="LOD"),]
+new.panels.missing.data.freq<-new.panels[grep("Missing",new.panels$OlinkID),]
+new.panels<-new.panels[-which(new.panels$OlinkID=="LOD"),]
+new.panels<-new.panels[-grep("Missing",new.panels$OlinkID),]
+ctrl.pos<-grep("Control",new.panels$OlinkID)
+pool.pos<-grep("Pool",new.panels$OlinkID)
+remove.pos<-c(ctrl.pos,pool.pos)
+new.panels<-new.panels[-remove.pos,]
+new.panels[is.na(new.panels)]<-NA
+
+new.panels$subject_id<-NA
+new.panels$visit<-NA
+for(i in 1:nrow(new.panels)) {
+  barc<-new.panels$OlinkID[i]
+  pos<-which(olink.master.barcodes==barc,arr.ind=T)
+  new.panels$subject_id[i]<-olink.master.barcodes$Subject.ID[pos[,"row"]]
+  new.panels$visit[i]<-substr(names(olink.master.barcodes)[pos[,"col"]], 2,2)
+}
+new.panels<-select(new.panels,-OlinkID)
+new.panels<-select(new.panels,subject_id, visit,everything())
+#new.panels<-apply(new.panels, 2, function(x) as.numeric(as.character(x)))
+new.panels[,3:ncol(new.panels)]<-apply(new.panels[,3:ncol(new.panels)], 2, function(x) as.numeric(as.character(x)))
+
+write.table(new.panels, file="20170057_Uhlen_NPX_NaN_20180116_subject_visit.txt", sep="\t", row.names = F)
+
+new.panels.info<-read_excel("Olink_nya_filer/20170057_Uhlen_NPX_NaN_20180116_edited.xlsx", sheet = "protein_info")
+new.panels.flags<-read_excel("Olink_nya_filer/20170057_Uhlen_NPX_NaN_20180116_edited.xlsx", sheet = "flag_status")
+new.panels.flags<-new.panels.flags[-remove.pos,]
+new.panels.flags$subject_id<-NA
+new.panels.flags$subject_id<-new.panels$subject_id
+new.panels.plate<-read_excel("Olink_nya_filer/20170057_Uhlen_NPX_NaN_20180116_edited.xlsx", sheet = "plate_id")
+new.panels.plate<-new.panels.plate[-remove.pos,]
+new.panels.plate$subject_id<-NA
+new.panels.plate$subject_id<-new.panels$subject_id
+
+#remove flagged subjects
+flags<-which(new.panels.flags=="Warning",arr.ind=T)
+flags<-sort(unique(flags[,"row"]))
+new.panels<-new.panels[-flags,]
+new.panels<-arrange(new.panels, subject_id)
+
+#Ta bort de subjects som ej har 4 besök
+remove.sub<-names(which(table(new.panels$subject_id)<4))
+new.panels<-filter(new.panels, !subject_id %in% remove.sub)
+
+### Slå ihop
+dim(new.panels)
+dim(first.panels)
+tot.subs<-intersect(first.panels$subject_id, new.panels$subject_id)
+first.panels<-filter(first.panels, subject_id %in% tot.subs)
+new.panels<-filter(new.panels, subject_id %in% tot.subs)
+tot.olink.panels<-cbind(first.panels, new.panels[,-(1:2)])
+
+
+#Ta bort 4032 som klustrar med 3339
+tot.olink.panels<-filter(tot.olink.panels, subject_id !=4032)
+
+tot.protein.info<-rbind(first.panels.info, new.panels.info)
+ 
+
+#Dela upp i fyra besök
+tot.olink.panels.1<-filter(tot.olink.panels, visit==1)
+names(tot.olink.panels.1)[3:ncol(tot.olink.panels.1)]<-tot.protein.info$Assay
+tot.olink.panels.2<-filter(tot.olink.panels, visit==2)
+names(tot.olink.panels.2)[3:ncol(tot.olink.panels.2)]<-tot.protein.info$Assay
+tot.olink.panels.3<-filter(tot.olink.panels, visit==3)
+names(tot.olink.panels.3)[3:ncol(tot.olink.panels.3)]<-tot.protein.info$Assay
+tot.olink.panels.4<-filter(tot.olink.panels, visit==4)
+names(tot.olink.panels.4)[3:ncol(tot.olink.panels.4)]<-tot.protein.info$Assay
+
+olink.subjects<-unique(tot.olink.panels$subject_id)
+num.person<-length(olink.subjects)
+
+## Ta fram kön och ålder
+sex<-unlist((wellness.data[which(wellness.data$subject_id %in% olink.subjects ),"sex"]))
+olink.gender<-unlist(wellness.data[which(wellness.data$subject_id %in% olink.subjects ),"sex"])
+sex[which(sex=="f")]<-"#F8766D"
+sex[which(sex=="m")]<-"#00BFC4"
+olink.sex.col<-sex
+olink.sex<-unlist((wellness.data[which(wellness.data$subject_id %in% olink.subjects ),"sex"]))
+olink.age<-unlist((wellness.data[which(wellness.data$subject_id %in% olink.subjects ),"age"]))
+
+
+#Remove proteins with mostly NA in all four visits
+na.lim<-0.5*num.person
+na.visit1<-which(apply( tot.olink.panels.1 , 2 , function(x) length(which(is.na(x)))> na.lim))
+na.visit2<-which(apply( tot.olink.panels.2 , 2 , function(x) length(which(is.na(x)))> na.lim))
+na.visit3<-which(apply( tot.olink.panels.3 , 2 , function(x) length(which(is.na(x)))> na.lim))
+na.visit4<-which(apply( tot.olink.panels.4 , 2 , function(x) length(which(is.na(x)))> na.lim))
+
+na.union.names<-unique(c(names(na.visit1), names(na.visit2), names(na.visit3),names(na.visit4)))
+na.union.pos<-unique(c(na.visit1, na.visit2, na.visit3,na.visit4))
+names(tot.olink.panels.1)[na.union.pos]
+
+visit.col<-c("#e41a1c","#377eb8","#4daf4a","#984ea3")
+
+na.visit.matrix<-rbind(apply( tot.olink.panels.1[,na.union.pos] , 2 , function(x) length(which(is.na(x)))), apply( tot.olink.panels.2[,na.union.pos] , 2 , function(x) length(which(is.na(x)))), apply( tot.olink.panels.3[,na.union.pos] , 2 , function(x) length(which(is.na(x)))), apply( tot.olink.panels.4[,na.union.pos] , 2 , function(x) length(which(is.na(x)))))
+rownames(na.visit.matrix)<-c("visit 1","visit 2","visit 3", "visit 4")
+na.visit.matrix<-na.visit.matrix[,order(apply(na.visit.matrix, 2, sum))]
+pdf("barplot.num.na.proseek.11.panels.new.normalization.pdf", w=7, h=5)
+par(las=2, mar=c(6,4,4,2))
+barplot(na.visit.matrix, beside=T, col=visit.col, ylab="Number of NA", cex.names=0.5)
+legend("topleft",c("Visit 1","Visit 2","Visit 3","Visit 4"), fill=visit.col, bty="n", cex=0.8)
+dev.off()
+
+na.remove.pos<-which(tot.protein.info$Assay %in% na.union.names)
+
+tot.protein.info<-tot.protein.info[-(na.remove.pos),]
+tot.olink.panels<-tot.olink.panels[,-(na.remove.pos+2)]
+tot.olink.panels.1<-tot.olink.panels.1[,-(na.remove.pos+2)]
+tot.olink.panels.2<-tot.olink.panels.2[,-(na.remove.pos+2)]
+tot.olink.panels.3<-tot.olink.panels.3[,-(na.remove.pos+2)]
+tot.olink.panels.4<-tot.olink.panels.4[,-(na.remove.pos+2)]
+
+tot.protein.info.all<-tot.protein.info
+
+pdf("boxplot.new.olink.proteins.pdf",w=15,h=10)
+olink.means<-apply(tot.olink.panels[,-c(1:2)], 2, mean, na.rm=T)
+ord<-order(olink.means)
+par(las=2, mar=c(6,4,4,2))
+boxplot(tot.olink.panels[,-c(1:2)][,ord])
+dev.off()
+
+#Ta bort replikatproteiner
+
+which(table(tot.protein.info$Assay)>1)
+sort(names(which(table(tot.protein.info$Assay)>1)))
+replicate.names<-names(which(table(tot.protein.info$Assay)>1))
+replicate.pos<-which(table(tot.protein.info$Assay)>1)
+#rem.pos<-which(replicate.names=="BDNF")
+#replicate.names<-replicate.names[-rem.pos]
+#replicate.pos<-replicate.pos[-rem.pos]
+num.replicates<-length(replicate.pos)
+table(tot.protein.info$Assay)[which(table(tot.protein.info$Assay)>1)]
+replicate.cor.mat<-matrix(nrow=num.replicates, ncol=12)
+rownames(replicate.cor.mat)<-replicate.names
+colnames(replicate.cor.mat)<-c("visit 1/2 panel1","visit 2/3 panel1","visit 3/4 panel 1","visit 1/2 panel2","visit 2/3 panel2","visit 3/4 panel 2","visit 1/2 panel3","visit 2/3 panel3","visit 3/4 panel 3","visit 1/2 panel4","visit 2/3 panel4","visit 3/4 panel 4")
+
+replicate.remove.pos<-vector()
+#Gå igenom replikaten för att se vilket som har högst korrelation
+for(j in 1:length(replicate.names)) {
+  protein<-replicate.names[j]
+  pos<-which(tot.protein.info$Assay %in% protein)
+  len<-length(pos)
+  replicate.remove.pos<-c(replicate.remove.pos, pos[-len])
+  print(c(j, pos))
+  replicate.cor.vec<-rep(0,12)
+  if(length(pos)==2) {
+    info<-tot.protein.info[pos,]
+    npx.data<-tot.olink.panels[,pos+2]
+    panels<-substring(info$Panel, 7)
+    panel1<-substring(panels[1], 0,nchar(panels[1])-8)
+    panel2<-substring(panels[2], 0,nchar(panels[2])-8)
+    panel1.npx1<-tot.olink.panels[tot.olink.panels$visit==1,(pos[1]+2)]
+    panel1.npx2<-tot.olink.panels[tot.olink.panels$visit==2,(pos[1]+2)]
+    panel1.npx3<-tot.olink.panels[tot.olink.panels$visit==3,(pos[1]+2)]
+    panel1.npx4<-tot.olink.panels[tot.olink.panels$visit==4,(pos[1]+2)]
+    panel2.npx1<-tot.olink.panels[tot.olink.panels$visit==1,(pos[2]+2)]
+    panel2.npx2<-tot.olink.panels[tot.olink.panels$visit==2,(pos[2]+2)]
+    panel2.npx3<-tot.olink.panels[tot.olink.panels$visit==3,(pos[2]+2)]
+    panel2.npx4<-tot.olink.panels[tot.olink.panels$visit==4,(pos[2]+2)]
+    replicate.cor.vec[1:3]<-c(round(cor(panel1.npx1, panel1.npx2, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel1.npx2, panel1.npx3, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel1.npx3, panel1.npx4, method="pearson",use = "pairwise.complete.obs"),3))
+    replicate.cor.vec[4:6]<-c(round(cor(panel2.npx1, panel2.npx2, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel2.npx2, panel2.npx3, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel2.npx3, panel2.npx4, method="pearson",use = "pairwise.complete.obs"),3))
+    replicate.cor.mat[j,]<-replicate.cor.vec
+    
+    
+      lower<-round(min(c(panel1.npx1, panel1.npx2, panel1.npx3,panel1.npx4,panel2.npx1, panel2.npx2, panel2.npx3,panel2.npx4), na.rm=T), 1)
+    upper<-round(max(c(panel1.npx1, panel1.npx2, panel1.npx3,panel1.npx4,panel2.npx1, panel2.npx2, panel2.npx3,panel2.npx4), na.rm=T),1)
+    
+    pdf(file=paste0(protein, ".",panel1,".",panel2,".four.visits.pdf"), w=12, h=7,useDingbats = FALSE )
+    layout(matrix(1:8, nrow=2, byrow=T))
+    
+    plot(panel1.npx1, panel1.npx2, ylim=c(lower, upper),xlim=c(lower, upper), col=olink.sex.col,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 2", main=paste0(protein," \nPanel: ",panel1,  "\n",paste0("Pearson: ",round(cor(panel1.npx1, panel1.npx2, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=0.8, cex.lab=0.8)
+    legend("topleft", c("f","m"), fill=c("#F8766D", "#00BFC4"), bty="n")
+    plot(panel1.npx1, panel1.npx3, ylim=c(lower, upper),xlim=c(lower, upper), col=olink.sex.col,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 3", main=paste0(protein," \nPanel: ",panel1,  "\n",paste0("Pearson: ",round(cor(panel1.npx1, panel1.npx3, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=0.8, cex.lab=0.8)
+    
+    plot(panel2.npx1, panel2.npx2, ylim=c(lower, upper),xlim=c(lower, upper), col=olink.sex.col,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 2", main=paste0(protein," \nPanel: ",panel2,  "\n",paste0("Pearson: ",round(cor(panel2.npx1, panel2.npx2, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=0.8, cex.lab=0.8)
+    plot(panel2.npx1, panel2.npx3, ylim=c(lower, upper),xlim=c(lower, upper), col=olink.sex.col,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 3", main=paste0(protein," Panel: ",panel2,  "\n",paste0("Pearson: ",round(cor(panel2.npx1, panel2.npx3, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=0.8, cex.lab=0.8)
+    
+    plot(panel1.npx1, panel2.npx1, ylim=c(lower, upper),xlim=c(lower, upper), col=olink.sex.col,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 1", main=paste0(protein," \nPanels: ",panel1, "/", panel2,  "\n",paste0("Pearson: ",round(cor(panel1.npx1, panel2.npx1, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=0.8, cex.lab=0.8)
+    plot(panel1.npx2, panel2.npx2, ylim=c(lower, upper),xlim=c(lower, upper), col=olink.sex.col,pch=19, xlab="log NPX visit 2", ylab="log NPX visit 2", main=paste0(protein," \nPanels: ",panel1, "/", panel2,  "\n",paste0("Pearson: ",round(cor(panel1.npx2, panel2.npx2, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=0.8, cex.lab=0.8)
+    plot(panel1.npx3, panel2.npx3, ylim=c(lower, upper),xlim=c(lower, upper), col=olink.sex.col,pch=19, xlab="log NPX visit 3", ylab="log NPX visit 3", main=paste0(protein," \nPanels: ",panel1, "/", panel2, "\n",paste0("Pearson: ",round(cor(panel1.npx3, panel2.npx3, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=0.8, cex.lab=0.8)
+    plot(panel1.npx4, panel2.npx4, ylim=c(lower, upper),xlim=c(lower, upper), col=olink.sex.col,pch=19, xlab="log NPX visit 4", ylab="log NPX visit 4", main=paste0(protein," \nPanels: ",panel1, "/", panel2, "\n",paste0("Pearson: ",round(cor(panel1.npx4, panel2.npx4, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=0.8, cex.lab=0.8)
+    dev.off()
+    
+    
+  } else 
+    if(length(pos)==3) {
+      info<-tot.protein.info[pos,]
+      npx.data<-tot.olink.panels[,pos+2]
+      panels<-substring(info$Panel, 7)
+      panel1<-substring(panels[1], 0,nchar(panels[1])-8)
+      panel2<-substring(panels[2], 0,nchar(panels[2])-8)
+      panel3<-substring(panels[3], 0,nchar(panels[2])-8)
+      panel1.npx1<-tot.olink.panels[tot.olink.panels$visit==1,(pos[1]+2)]
+      panel1.npx2<-tot.olink.panels[tot.olink.panels$visit==2,(pos[1]+2)]
+      panel1.npx3<-tot.olink.panels[tot.olink.panels$visit==3,(pos[1]+2)]
+      panel1.npx4<-tot.olink.panels[tot.olink.panels$visit==4,(pos[1]+2)]
+      panel2.npx1<-tot.olink.panels[tot.olink.panels$visit==1,(pos[2]+2)]
+      panel2.npx2<-tot.olink.panels[tot.olink.panels$visit==2,(pos[2]+2)]
+      panel2.npx3<-tot.olink.panels[tot.olink.panels$visit==3,(pos[2]+2)]
+      panel2.npx4<-tot.olink.panels[tot.olink.panels$visit==4,(pos[2]+2)]
+      
+      panel3.npx1<-tot.olink.panels[tot.olink.panels$visit==1,(pos[3]+2)]
+      panel3.npx2<-tot.olink.panels[tot.olink.panels$visit==2,(pos[3]+2)]
+      panel3.npx3<-tot.olink.panels[tot.olink.panels$visit==3,(pos[3]+2)]
+      panel3.npx4<-tot.olink.panels[tot.olink.panels$visit==4,(pos[3]+2)]
+      
+      replicate.cor.vec[1:3]<-c(round(cor(panel1.npx1, panel1.npx2, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel1.npx2, panel1.npx3, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel1.npx3, panel1.npx4, method="pearson",use = "pairwise.complete.obs"),3))
+      replicate.cor.vec[4:6]<-c(round(cor(panel2.npx1, panel2.npx2, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel2.npx2, panel2.npx3, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel2.npx3, panel2.npx4, method="pearson",use = "pairwise.complete.obs"),3))
+      replicate.cor.vec[7:9]<-c(round(cor(panel3.npx1, panel3.npx2, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel3.npx2, panel3.npx3, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel3.npx3, panel3.npx4, method="pearson",use = "pairwise.complete.obs"),3))
+      replicate.cor.mat[j,]<-replicate.cor.vec
+      
+      lower<-round(min(c(panel1.npx1, panel1.npx2, panel1.npx3,panel1.npx4,panel2.npx1, panel2.npx2, panel2.npx3,panel2.npx4,panel3.npx1, panel3.npx2, panel3.npx3,panel3.npx4), na.rm=T), 1)
+      upper<-round(max(c(panel1.npx1, panel1.npx2, panel1.npx3,panel1.npx4,panel2.npx1, panel2.npx2, panel2.npx3,panel2.npx4,panel3.npx1, panel3.npx2, panel3.npx3,panel3.npx4), na.rm=T),1)
+      
+      pdf(file=paste0(protein, ".",panel1,".",panel2,".",panel3,".triplicate.four.visits.pdf"), w=10, h=8)
+      layout(matrix(1:12, nrow=3, byrow=T))
+      ce<-1.1
+      ce.main<-0.8
+      plot(panel1.npx1, panel2.npx1, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 1", main=paste0(protein," \nPanels: ",panel1, "\n", panel2,  "\n",paste0("Pearson: ",round(cor(panel1.npx1, panel2.npx1, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      legend("topleft", c("f","m"), fill=c("#F8766D", "#00BFC4"), bty="n")
+      plot(panel1.npx2, panel2.npx2, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 2", ylab="log NPX visit 2", main=paste0(protein," \nPanels: ",panel1, "\n", panel2,"\n",paste0("Pearson: ",round(cor(panel1.npx2, panel2.npx2, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      plot(panel1.npx3, panel2.npx3, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 3", ylab="log NPX visit 3", main=paste0(protein," \nPanels: ",panel1, "\n", panel2, "\n",paste0("Pearson: ",round(cor(panel1.npx3, panel2.npx3, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      plot(panel1.npx4, panel2.npx4, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 4", ylab="log NPX visit 4", main=paste0(protein," \nPanels: ",panel1, "\n", panel2, "\n",paste0("Pearson: ",round(cor(panel1.npx4, panel2.npx4, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      
+      plot(panel1.npx1, panel3.npx1, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 1", main=paste0(protein," \nPanels: ",panel1, "\n", panel3,  "\n",paste0("Pearson: ",round(cor(panel1.npx1, panel3.npx1, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      plot(panel1.npx2, panel3.npx2, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 2", ylab="log NPX visit 2", main=paste0(protein," \nPanels: ",panel1, "\n", panel3,"\n",paste0("Pearson: ",round(cor(panel1.npx2, panel3.npx2, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      plot(panel1.npx3, panel3.npx3, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 3", ylab="log NPX visit 3", main=paste0(protein," \nPanels: ",panel1, "\n", panel3, "\n",paste0("Pearson: ",round(cor(panel1.npx3, panel3.npx3, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      plot(panel1.npx4, panel3.npx4, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 4", ylab="log NPX visit 4", main=paste0(protein," \nPanels: ",panel1, "\n", panel3, "\n",paste0("Pearson: ",round(cor(panel1.npx4, panel3.npx4, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      
+      plot(panel2.npx1, panel3.npx1, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 1", main=paste0(protein," \nPanels: ",panel2, "\n", panel3,  "\n",paste0("Pearson: ",round(cor(panel1.npx1, panel3.npx1, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      plot(panel2.npx2, panel3.npx2, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 2", ylab="log NPX visit 2", main=paste0(protein," \nPanels: ",panel2, "\n", panel3,"\n",paste0("Pearson: ",round(cor(panel1.npx2, panel3.npx2, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      plot(panel2.npx3, panel3.npx3, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 3", ylab="log NPX visit 3", main=paste0(protein," \nPanels: ",panel2, "\n", panel3, "\n",paste0("Pearson: ",round(cor(panel1.npx3, panel3.npx3, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      plot(panel2.npx4, panel3.npx4, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 4", ylab="log NPX visit 4", main=paste0(protein," \nPanels: ",panel2, "\n", panel3, "\n",paste0("Pearson: ",round(cor(panel1.npx4, panel3.npx4, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      dev.off()
+    }
+  else 
+    if(length(pos)==4) {
+      info<-tot.protein.info[pos,]
+      npx.data<-tot.olink.panels[,pos+2]
+      panels<-substring(info$Panel, 7)
+      panel1<-substring(panels[1], 0,nchar(panels[1])-8)
+      panel2<-substring(panels[2], 0,nchar(panels[2])-8)
+      panel3<-substring(panels[3], 0,nchar(panels[2])-8)
+      panel4<-substring(panels[3], 0,nchar(panels[2])-8)
+      panel1.npx1<-tot.olink.panels[tot.olink.panels$visit==1,(pos[1]+2)]
+      panel1.npx2<-tot.olink.panels[tot.olink.panels$visit==2,(pos[1]+2)]
+      panel1.npx3<-tot.olink.panels[tot.olink.panels$visit==3,(pos[1]+2)]
+      panel1.npx4<-tot.olink.panels[tot.olink.panels$visit==4,(pos[1]+2)]
+      panel2.npx1<-tot.olink.panels[tot.olink.panels$visit==1,(pos[2]+2)]
+      panel2.npx2<-tot.olink.panels[tot.olink.panels$visit==2,(pos[2]+2)]
+      panel2.npx3<-tot.olink.panels[tot.olink.panels$visit==3,(pos[2]+2)]
+      panel2.npx4<-tot.olink.panels[tot.olink.panels$visit==4,(pos[2]+2)]
+      
+      panel3.npx1<-tot.olink.panels[tot.olink.panels$visit==1,(pos[3]+2)]
+      panel3.npx2<-tot.olink.panels[tot.olink.panels$visit==2,(pos[3]+2)]
+      panel3.npx3<-tot.olink.panels[tot.olink.panels$visit==3,(pos[3]+2)]
+      panel3.npx4<-tot.olink.panels[tot.olink.panels$visit==4,(pos[3]+2)]
+      panel4.npx1<-tot.olink.panels[tot.olink.panels$visit==1,(pos[4]+2)]
+      panel4.npx2<-tot.olink.panels[tot.olink.panels$visit==2,(pos[4]+2)]
+      panel4.npx3<-tot.olink.panels[tot.olink.panels$visit==3,(pos[4]+2)]
+      panel4.npx4<-tot.olink.panels[tot.olink.panels$visit==4,(pos[4]+2)]
+      
+      replicate.cor.vec[1:3]<-c(round(cor(panel1.npx1, panel1.npx2, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel1.npx2, panel1.npx3, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel1.npx3, panel1.npx4, method="pearson",use = "pairwise.complete.obs"),3))
+      replicate.cor.vec[4:6]<-c(round(cor(panel2.npx1, panel2.npx2, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel2.npx2, panel2.npx3, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel2.npx3, panel2.npx4, method="pearson",use = "pairwise.complete.obs"),3))
+      replicate.cor.vec[7:9]<-c(round(cor(panel3.npx1, panel3.npx2, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel3.npx2, panel3.npx3, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel3.npx3, panel3.npx4, method="pearson",use = "pairwise.complete.obs"),3))
+      replicate.cor.vec[10:12]<-c(round(cor(panel4.npx1, panel4.npx2, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel4.npx2, panel4.npx3, method="pearson",use = "pairwise.complete.obs"),3),round(cor(panel4.npx3, panel4.npx4, method="pearson",use = "pairwise.complete.obs"),3))
+      replicate.cor.mat[j,]<-replicate.cor.vec
+      
+      lower<-round(min(c(panel1.npx1, panel1.npx2, panel1.npx3,panel1.npx4,panel2.npx1, panel2.npx2, panel2.npx3,panel2.npx4,panel3.npx1, panel3.npx2, panel3.npx3,panel3.npx4), na.rm=T), 1)
+      upper<-round(max(c(panel1.npx1, panel1.npx2, panel1.npx3,panel1.npx4,panel2.npx1, panel2.npx2, panel2.npx3,panel2.npx4,panel3.npx1, panel3.npx2, panel3.npx3,panel3.npx4), na.rm=T),1)
+      
+      pdf(file=paste0(protein, ".",panel1,".",panel2,".",panel3,".triplicate.four.visits.pdf"), w=14, h=12)
+      layout(matrix(1:12, nrow=3, byrow=T))
+      ce<-1.1
+      ce.main<-0.8
+      
+      plot(panel1.npx1, panel2.npx1, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 1", main=paste0(protein," \nPanels: ",panel1, "\n", panel2,  "\n",paste0("Pearson: ",round(cor(panel1.npx1, panel2.npx1, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      legend("topleft", c("f","m"), fill=c("#F8766D", "#00BFC4"), bty="n")
+      plot(panel1.npx2, panel2.npx2, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 2", ylab="log NPX visit 2", main=paste0(protein," \nPanels: ",panel1, "\n", panel2,"\n",paste0("Pearson: ",round(cor(panel1.npx2, panel2.npx2, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      plot(panel1.npx3, panel2.npx3, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 3", ylab="log NPX visit 3", main=paste0(protein," \nPanels: ",panel1, "\n", panel2, "\n",paste0("Pearson: ",round(cor(panel1.npx3, panel2.npx3, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      plot(panel1.npx4, panel2.npx4, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 4", ylab="log NPX visit 4", main=paste0(protein," \nPanels: ",panel1, "\n", panel2, "\n",paste0("Pearson: ",round(cor(panel1.npx4, panel2.npx4, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      
+      plot(panel1.npx1, panel3.npx1, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 1", main=paste0(protein," \nPanels: ",panel1, "\n", panel3,  "\n",paste0("Pearson: ",round(cor(panel1.npx1, panel3.npx1, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      plot(panel1.npx2, panel3.npx2, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 2", ylab="log NPX visit 2", main=paste0(protein," \nPanels: ",panel1, "\n", panel3,"\n",paste0("Pearson: ",round(cor(panel1.npx2, panel3.npx2, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      plot(panel1.npx3, panel3.npx3, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 3", ylab="log NPX visit 3", main=paste0(protein," \nPanels: ",panel1, "\n", panel3, "\n",paste0("Pearson: ",round(cor(panel1.npx3, panel3.npx3, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      plot(panel1.npx4, panel3.npx4, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 4", ylab="log NPX visit 4", main=paste0(protein," \nPanels: ",panel1, "\n", panel3, "\n",paste0("Pearson: ",round(cor(panel1.npx4, panel3.npx4, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      
+      plot(panel2.npx1, panel3.npx1, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 1", main=paste0(protein," \nPanels: ",panel2, "\n", panel3,  "\n",paste0("Pearson: ",round(cor(panel1.npx1, panel3.npx1, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      plot(panel2.npx2, panel3.npx2, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 2", ylab="log NPX visit 2", main=paste0(protein," \nPanels: ",panel2, "\n", panel3,"\n",paste0("Pearson: ",round(cor(panel1.npx2, panel3.npx2, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      plot(panel2.npx3, panel3.npx3, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 3", ylab="log NPX visit 3", main=paste0(protein," \nPanels: ",panel2, "\n", panel3, "\n",paste0("Pearson: ",round(cor(panel1.npx3, panel3.npx3, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      plot(panel2.npx4, panel3.npx4, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 4", ylab="log NPX visit 4", main=paste0(protein," \nPanels: ",panel2, "\n", panel3, "\n",paste0("Pearson: ",round(cor(panel1.npx4, panel3.npx4, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce, cex.lab=ce,cex.main=ce.main)
+      dev.off()
+    }
+}
+
+
+replicate.cor.mat.means<-data.frame(panel1=apply(replicate.cor.mat[,1:3],1,mean),panel2=apply(replicate.cor.mat[,4:6],1,mean) ,panel3=apply(replicate.cor.mat[,7:9],1,mean),panel4=apply(replicate.cor.mat[,10:12],1,mean))
+
+#replicates<-c("uPA", "MCP.1", "OPG","CXCL1","IL.18","FGF.21","FGF.23","CCL3","VEGF.A","TGF.alpha","TNFSF10","HGF","BDNF","GDNF","Beta.NGF","IL.6","SCF","ZBTB16", "DCBLD2", "JUN","ENTPD6","CCL11", "IL.5","BOC","KIM1","IL.10","VEGF.D","AR","NT.pro.BNP","PlGF","TNFRSF10A")
+
+#Ta bort replikaten
+#replicate.remove.pos
+
+tot.protein.info<-tot.protein.info[-replicate.remove.pos,]
+tot.olink.panels<-tot.olink.panels[,-(replicate.remove.pos+2)]
+tot.olink.panels.1<-tot.olink.panels.1[,-(replicate.remove.pos+2)]
+tot.olink.panels.2<-tot.olink.panels.2[,-(replicate.remove.pos+2)]
+tot.olink.panels.3<-tot.olink.panels.3[,-(replicate.remove.pos+2)]
+tot.olink.panels.4<-tot.olink.panels.4[,-(replicate.remove.pos+2)]
+
+#Ta bort proteiner som klustrar per visit
+prot.clustered.visit.ext<-read.table("proteins_clustering_from_all_extended.txt")
+prot.clustered.ext.visit<-as.vector(prot.clustered.visit.ext[,1])
+prot.clustered.ext.name <- as.vector(sapply(prot.clustered.ext.visit, function(x) strsplit(x, "_")[[1]][1]))
+prot.clustered.ext.vis <- as.numeric(sapply(prot.clustered.ext.visit, function(x) strsplit(x, "_")[[1]][2]))
+prot.clustered.ext.names.multi<-names(table(prot.clustered.ext.name)[which(table(prot.clustered.ext.name)>1)])
+prot.clustered.ext.names.multi.add<-c(prot.clustered.ext.names.multi,"PLXNB1","MAEA","STX6","TRAF2","PDGF.subunit.A","PDGF.subunit.B","BMP.4","TGFBI", "LAP.TGF.beta.1","BDNF", "CCL22","NFASC")
+#Lägg till de som ändrat stavning med gene names
+prot.clustered.ext.names.multi.add<-c(prot.clustered.ext.names.multi,"LAP TGF-beta-1","4E-BP1","ANG-1", "CASP-3","CASP-8","CD40-L","DKKL1","HB-EGF","IL7", "IL8","JAM-A","MCP-4","METAP1","PAR-1","PARP-1","PECAM-1","PDGF subunit A", "PDGF subunit B","BMP-4", "CCL22","NFASC","gal.8")          
+
+#prot.clustered.ext.names.multi.add[which(!prot.clustered.ext.names.multi.add %in% tot.protein.info$Assay)]
+#sort(tot.protein.info$Assay[grep("TGF", tot.protein.info$Assay)])
+
+sort(tot.protein.info$Assay[grep("gal.8", tot.protein.info$Assay)])
+
+#"gal.8" 
+#OID00324
+
+clustered.pos<-which(tot.protein.info$Assay %in% prot.clustered.ext.names.multi.add)
+names(tot.olink.panels.1)[clustered.pos+2]
+
+tot.protein.info<-tot.protein.info[-clustered.pos,]
+tot.olink.panels<-tot.olink.panels[,-(clustered.pos+2)]
+tot.olink.panels.1<-tot.olink.panels.1[,-(clustered.pos+2)]
+tot.olink.panels.2<-tot.olink.panels.2[,-(clustered.pos+2)]
+tot.olink.panels.3<-tot.olink.panels.3[,-(clustered.pos+2)]
+tot.olink.panels.4<-tot.olink.panels.4[,-(clustered.pos+2)]
+
+olink.proteins<-names(tot.olink.panels.1)[-c(1:2)]
+num.prot<-length(olink.proteins)
+olink.subjects<-unique(tot.olink.panels$subject_id)
+num.person<-length(olink.subjects)
+
+olink.visit1.tot<-tot.olink.panels.1[,-2]
+olink.visit2.tot<-tot.olink.panels.2[,-2]
+olink.visit3.tot<-tot.olink.panels.3[,-2]
+olink.visit4.tot<-tot.olink.panels.4[,-2]
+
+write.table(olink.visit1.tot,file="olink.visit1.new.normalization.11.panels.txt",dec=".", quote=F,row.names=F, sep="\t")
+write.table(olink.visit2.tot,file="olink.visit2.new.normalization.11.panels.txt",dec=".", quote=F,row.names=F, sep="\t")
+write.table(olink.visit3.tot,file="olink.visit3.new.normalization.11.panels.txt",dec=".", quote=F,row.names=F, sep="\t")
+write.table(olink.visit4.tot,file="olink.visit4.new.normalization.11.panels.txt",dec=".", quote=F,row.names=F, sep="\t")
+write.table(tot.protein.info,file="olink.visit4.new.normalization.metadata.txt",dec=".", quote=F,row.names=F, sep="\t")
+
+
+olink.visit1.tot.new<-tot.olink.panels.1[,-2]
+olink.visit2.tot.new<-tot.olink.panels.2[,-2]
+olink.visit3.tot.new<-tot.olink.panels.3[,-2]
+olink.visit4.tot.new<-tot.olink.panels.4[,-2]
+
+num.col<-ncol(olink.visit1.tot)
+
+### Boxplots med fördelningen NPX av alla 4 visits 
+visit1.mat<-as.matrix(olink.visit1.tot[,-1])
+visit2.mat<-as.matrix(olink.visit2.tot[,-1])
+visit3.mat<-as.matrix(olink.visit3.tot[,-1])
+visit4.mat<-as.matrix(olink.visit4.tot[,-1])
+
+pdf(file="new.data.proseek.tot.boxplot.protein.visit1.4.pdf", w=14,h=9)
+layout(matrix(nrow=4, 1:4))
+par(las=2, mar=c(4,4,4,2))
+boxplot(visit1.mat[,order(apply(visit1.mat, 2, mean, na.rm=T))],ylab="log NPX", main="Visit 1",col=rainbow(ncol(visit1.mat)), cex=0.7, cex.axis=0.5)
+boxplot(visit2.mat[,order(apply(visit2.mat, 2, mean, na.rm=T))],ylab="log NPX", main="Visit 2", col=rainbow(ncol(visit1.mat)), cex=0.7, cex.axis=0.5)
+boxplot(visit3.mat[,order(apply(visit3.mat, 2, mean, na.rm=T))],ylab="log NPX", main="Visit 3", col=rainbow(ncol(visit1.mat)), cex=0.7, cex.axis=0.5)
+boxplot(visit4.mat[,order(apply(visit4.mat, 2, mean, na.rm=T))],ylab="log NPX", main="Visit 4", col=rainbow(ncol(visit1.mat)), cex=0.7, cex.axis=0.5)
+dev.off()
+
+
+pdf(file="new.data.proseek.tot.boxplot.protein.visit1.4.high.variance.pdf", w=14,h=9)
+layout(matrix(nrow=4, 1:4))
+par(las=2, mar=c(5,4,4,2))
+boxplot(visit1.mat[,order(apply(visit1.mat, 2, var, na.rm=T))[(ncol(visit1.mat)-50):ncol(visit1.mat)]],ylab="log NPX", main="Visit 1",col=rainbow(50), cex=0.7, cex.axis=1)
+boxplot(visit2.mat[,order(apply(visit2.mat, 2, var, na.rm=T))[(ncol(visit2.mat)-50):ncol(visit2.mat)]],ylab="log NPX", main="Visit 2", col=rainbow(50), cex=0.7, cex.axis=1)
+boxplot(visit3.mat[,order(apply(visit3.mat, 2, var, na.rm=T))[(ncol(visit3.mat)-50):ncol(visit3.mat)]],ylab="log NPX", main="Visit 3", col=rainbow(50), cex=0.7, cex.axis=1)
+boxplot(visit4.mat[,order(apply(visit4.mat, 2, var, na.rm=T))[(ncol(visit4.mat)-50):ncol(visit4.mat)]],ylab="log NPX", main="Visit 4", col=rainbow(50), cex=0.7, cex.axis=1)
+dev.off()
+
+pdf(file="new.data.proseek.tot.boxplot.protein.visit1.4.high.mean.pdf", w=14,h=9)
+layout(matrix(nrow=4, 1:4))
+par(las=2, mar=c(5,4,4,2))
+boxplot(visit1.mat[,order(apply(visit1.mat, 2, mean, na.rm=T))[(ncol(visit1.mat)-50):ncol(visit1.mat)]],ylab="log NPX", main="Visit 1",col=rainbow(50), cex=0.7, cex.axis=1)
+boxplot(visit2.mat[,order(apply(visit2.mat, 2, mean, na.rm=T))[(ncol(visit2.mat)-50):ncol(visit2.mat)]],ylab="log NPX", main="Visit 2", col=rainbow(50), cex=0.7, cex.axis=1)
+boxplot(visit3.mat[,order(apply(visit3.mat, 2, mean, na.rm=T))[(ncol(visit3.mat)-50):ncol(visit3.mat)]],ylab="log NPX", main="Visit 3", col=rainbow(50), cex=0.7, cex.axis=1)
+boxplot(visit4.mat[,order(apply(visit4.mat, 2, mean, na.rm=T))[(ncol(visit4.mat)-50):ncol(visit4.mat)]],ylab="log NPX", main="Visit 4", col=rainbow(50), cex=0.7, cex.axis=1)
+dev.off()
+
+
+
+pdf(file="new.data.proseek.tot.boxplot.subject.visit1.4.pdf", w=14,h=9)
+layout(matrix(nrow=4, 1:4))
+par(las=2, mar=c(4,4,4,2))
+boxplot(t(visit1.mat[order(apply(visit1.mat, 1, var, na.rm=T)),]),names=olink.subjects[order(apply(visit1.mat, 1, var, na.rm=T))], ylab="log NPX", main="Visit 1", cex=0.7, cex.axis=1)
+boxplot(t(visit2.mat[order(apply(visit2.mat, 1, var, na.rm=T)),]),names=olink.subjects[order(apply(visit2.mat, 1, var, na.rm=T))],ylab="log NPX", main="Visit 2", cex=0.7, cex.axis=1)
+boxplot(t(visit3.mat[order(apply(visit3.mat, 1, var, na.rm=T)),]),names=olink.subjects[order(apply(visit3.mat, 1, var, na.rm=T))],ylab="log NPX", main="Visit 3", cex=0.7, cex.axis=1)
+boxplot(t(visit4.mat[order(apply(visit4.mat, 1, var, na.rm=T)),]),names=olink.subjects[order(apply(visit4.mat, 1, var, na.rm=T))],ylab="log NPX", main="Visit 4",  cex=0.7, cex.axis=1)
+dev.off()
+
+
+############## Plotta variansen för varje protein samt person istället för boxplot
+pdf(file="new.data.proseek.tot.variance.visit1.4.pdf", w=14,h=9)
+layout(matrix(nrow=3, 1:3))
+par(las=2, mar=c(5,4.2,4,2))
+
+prot.sd.mat<-matrix(nrow=num.prot, ncol=4)
+colnames(prot.sd.mat)<-c("visit1","visit2","visit3","visit4")
+rownames(prot.sd.mat)<-olink.proteins
+
+prot.sd.mat[,1]<-apply(olink.visit1.tot[,-1], 2, sd, na.rm=T)
+prot.sd.mat[,2]<-apply(olink.visit2.tot[,-1], 2, sd, na.rm=T)
+prot.sd.mat[,3]<-apply(olink.visit3.tot[,-1], 2, sd, na.rm=T)
+prot.sd.mat[,4]<-apply(olink.visit4.tot[,-1], 2, sd, na.rm=T)
+mean.prot.sd.vec<-apply(prot.sd.mat, 1, mean, na.rm=T)
+ord.mean.prot.sd<-order(mean.prot.sd.vec)
+lower<-round(min(prot.sd.mat, na.rm=T), 1)
+upper<-round(max(prot.sd.mat, na.rm=T),1)
+
+plot(prot.sd.mat[ord.mean.prot.sd,1], col=visit.col[1], ylim=c(lower, upper), xaxt='n', pch=19,  ylab="protein SD for one visit", xlab="", cex.axis=1, cex.lab=1, cex=0.8, main="All proteins - standard deviation for one visit - sorted by mean visit SD")
+axis(side=1, at=1:nrow(prot.sd.mat), labels=olink.proteins[ord.mean.prot.sd], xlab="", cex.axis=0.4, cex.lab=1)
+lines(prot.sd.mat[ord.mean.prot.sd,2], col=visit.col[2], type="p", pch=19, cex=0.8)
+lines(prot.sd.mat[ord.mean.prot.sd,3], col=visit.col[3], type="p", pch=19, cex=0.8)
+lines(prot.sd.mat[ord.mean.prot.sd,4], col=visit.col[4], type="p", pch=19, cex=0.8)
+legend("topleft",c("Visit 1","Visit 2","Visit 3","Visit 4"), fill=visit.col, bty="n", cex=0.8)
+
+plot(prot.sd.mat[ord.mean.prot.sd[(num.prot-50):num.prot],1], col=visit.col[1], ylim=c(lower, upper), xaxt='n', pch=19,  ylab="protein SD for one visit", xlab="", cex.axis=1, cex.lab=1, cex=0.8, main="Top 50 proteins (mean SD) - standard deviation for one visit")
+axis(side=1, at=1:nrow(prot.sd.mat[ord.mean.prot.sd[(num.prot-50):num.prot],]), labels=olink.proteins[ord.mean.prot.sd[(num.prot-50):num.prot]], xlab="", cex.axis=1, cex.lab=1)
+lines(prot.sd.mat[ord.mean.prot.sd[(num.prot-50):num.prot],2], col=visit.col[2], type="p", pch=19, cex=0.8)
+lines(prot.sd.mat[ord.mean.prot.sd[(num.prot-50):num.prot],3], col=visit.col[3], type="p", pch=19, cex=0.8)
+lines(prot.sd.mat[ord.mean.prot.sd[(num.prot-50):num.prot],4], col=visit.col[4], type="p", pch=19, cex=0.8)
+legend("topleft",c("Visit 1","Visit 2","Visit 3","Visit 4"), fill=visit.col, bty="n", cex=0.8)
+
+
+subject.sd.mat<-matrix(nrow=num.person, ncol=4)
+colnames(subject.sd.mat)<-c("visit1","visit2","visit3","visit4")
+rownames(subject.sd.mat)<-olink.subjects
+
+subject.sd.mat[,1]<-apply(olink.visit1.tot[,-1], 1, sd, na.rm=T)
+subject.sd.mat[,2]<-apply(olink.visit2.tot[,-1], 1, sd, na.rm=T)
+subject.sd.mat[,3]<-apply(olink.visit3.tot[,-1], 1, sd, na.rm=T)
+subject.sd.mat[,4]<-apply(olink.visit4.tot[,-1], 1, sd, na.rm=T)
+mean.subject.sd.vec<-apply(subject.sd.mat, 1, mean, na.rm=T)
+ord.mean.subject.sd<-order(mean.subject.sd.vec)
+lower<-round(min(subject.sd.mat, na.rm=T), 1)
+upper<-round(max(subject.sd.mat, na.rm=T),1)
+
+plot(subject.sd.mat[ord.mean.subject.sd,1], col=visit.col[1], ylim=c(lower, 1), xaxt='n', pch=19,  ylab="subject SD for one visit", xlab="", cex.axis=1, cex.lab=1, cex=0.8, main="All subjects - standard deviation for one visit - sorted by mean visit SD")
+axis(side=1, at=1:nrow(subject.sd.mat), labels=olink.subjects[ord.mean.subject.sd], xlab="", cex.axis=1, cex.lab=1)
+lines(subject.sd.mat[ord.mean.subject.sd,2], col=visit.col[2], type="p", pch=19, cex=0.8)
+lines(subject.sd.mat[ord.mean.subject.sd,3], col=visit.col[3], type="p", pch=19, cex=0.8)
+lines(subject.sd.mat[ord.mean.subject.sd,4], col=visit.col[4], type="p", pch=19, cex=0.8)
+legend("topleft",c("Visit 1","Visit 2","Visit 3","Visit 4"), fill=visit.col, bty="n", cex=0.8)
+
+dev.off()
+
+
+
+
+
+################################# Plotta korrelation för varje protein mellan alla visits
+cor.mat<-matrix(nrow=num.prot, ncol=6)
+colnames(cor.mat)<-c("visit 1-2","visit 1-3","visit 1-4","visit 2-3","visit 2-4","visit 3-4")
+rownames(cor.mat)<-olink.proteins
+for(j in 2:num.col) {
+  cor.vec<-rep(0, 6)
+  cor.vec[1]<-cor(olink.visit1.tot[,j], olink.visit2.tot[,j], method="pearson", use="pairwise.complete.obs")
+  cor.vec[2]<-cor(olink.visit1.tot[,j], olink.visit3.tot[,j], method="pearson", use="pairwise.complete.obs")
+  cor.vec[3]<-cor(olink.visit1.tot[,j], olink.visit4.tot[,j], method="pearson", use="pairwise.complete.obs")
+  cor.vec[4]<-cor(olink.visit2.tot[,j], olink.visit3.tot[,j], method="pearson", use="pairwise.complete.obs")
+  cor.vec[5]<-cor(olink.visit2.tot[,j], olink.visit4.tot[,j], method="pearson", use="pairwise.complete.obs")
+  cor.vec[6]<-cor(olink.visit3.tot[,j], olink.visit4.tot[,j], method="pearson", use="pairwise.complete.obs")
+  cor.mat[j-1,]<-cor.vec
+}
+cor.ord<-order(cor.mat[,1], decreasing=T)
+
+mean(apply(cor.mat, 2, mean, na.rm=T))
+
+##Kolla om det skiljer mellan nya/gamla paneler
+first.new.protein<-names(new.panels)[3]#första nya proteinet: OID01272
+first.new.protein.name<-as.character(new.panels.info[which(new.panels.info$OlinkID == first.new.protein),"Assay"])
+first.new.protein.pos<-grep(first.new.protein.name, rownames(cor.mat))
+first.panel.cor<-cor.mat[1:(first.new.protein.pos-1),]
+new.panel.cor<-cor.mat[first.new.protein.pos:nrow(cor.mat),]
+
+pdf("new.data.proseek.tot.cor.boxplot.split.panels.pdf", h=6, w=6)
+layout(matrix(nrow=1,1:2))
+par(las=2)
+boxplot(first.panel.cor, col=rainbow(6), ylab="Pearson cor")
+boxplot(new.panel.cor, col=rainbow(6), ylab="Pearson cor")
+dev.off()
+
+round(apply(first.panel.cor, 2, mean, na.rm=T),3)
+round(apply(new.panel.cor, 2, mean, na.rm=T),3)
+
+first.panel.cor
+
+pdf("new.data.proseek.tot.cor.histograms.pdf", h=8, w=12)
+layout(matrix(1:6, ncol=3, byrow=T))
+mean.cor.vec<-rep(0,6)
+for(j in 1:6) {
+  mean.cor<-round(mean(cor.mat[,j], na.rm=T),2)
+  mean.cor.vec[j]<-mean.cor
+  hist(cor.mat[,j], main=colnames(cor.mat)[j], xlab="Pearson cor", col=rainbow(6)[j])
+  legend("topleft", legend=paste0("Mean cor: ",mean.cor), bty="n")
+}
+dev.off()
+
+pdf("new.data.proseek.tot.cor.density.pdf", h=6, w=6)
+plot(density(cor.mat[,1], na.rm=T),xlab="Pearson cor", col=rainbow(6)[1], ylim=c(0,3), main="Correlation density")
+mean.cor<-round(mean(cor.mat[,1], na.rm=T),2)
+for(j in 2:6) {
+  mean.cor<-round(mean(cor.mat[,j], na.rm=T),2)
+  lines(density(cor.mat[,j], na.rm=T),col=rainbow(6)[j])
+}
+legend("topleft", legend=paste0(colnames(cor.mat)," / Mean: " ,mean.cor.vec), fill=rainbow(6), bty="n")
+dev.off()
+
+pdf("new.data.proseek.tot.cor.boxplot.pdf", h=6, w=6)
+par(las=2)
+boxplot(cor.mat, col=rainbow(6), ylab="Pearson cor")
+dev.off()
+
+
+
+
+sex<-unlist((wellness.data[which(wellness.data$subject_id %in% olink.visit1.tot$subject_id ),"sex"]))
+olink.gender<-unlist((wellness.data[which(wellness.data$subject_id %in% olink.visit1.tot$subject_id ),"sex"]))
+sex[which(sex=="f")]<-"#F8766D"
+sex[which(sex=="m")]<-"#00BFC4"
+olink.sex.col<-sex
+olink.sex<-unlist((wellness.data[which(wellness.data$subject_id %in% olink.visit1.tot$subject_id ),"sex"]))
+olink.age<-unlist((wellness.data[which(wellness.data$subject_id %in% olink.visit1.tot$subject_id ),"age"]))
+
+#Plotta med linjeplott per person
+pdf(file="new.data.proseek.correlation.person.line.all.proteins.pdf", w=9,h=10,useDingbats = FALSE )
+for(i in 1:num.prot) {
+  #for(i in 2:3) {
+  par(mar=c(5,4,4,1), mgp=c(2.5,1,0))
+  layout(matrix(c(rep(1,4),rep(2, 4), rep(3,4), rep(4,4),rep(5, 4), rep(6,4),rep(7, 4), rep(8,2), rep(9,4),rep(10,2)),nrow=3, ncol=12,byrow=T))
+  #  layout(matrix(1:12, nrow=2, byrow=T))
+  npx1<-unlist(olink.visit1.tot[,(cor.ord[i]+1)])
+  npx2<-unlist(olink.visit2.tot[,(cor.ord[i]+1)])
+  npx3<-unlist(olink.visit3.tot[,(cor.ord[i]+1)])
+  npx4<-unlist(olink.visit4.tot[,(cor.ord[i]+1)])
+  name<-olink.proteins[cor.ord[i]]
+  
+  if(all(is.na(npx1)) | all(is.na(npx2)) |all(is.na(npx3)) | all(is.na(npx4))) {
+    next;
+  }
+  ce.ax<-1
+  ce.la<-1
+  
+  lower<-round(min(c(npx1, npx2, npx3, npx4), na.rm=T), 1)
+  upper<-round(max(c(npx1, npx2, npx3, npx4), na.rm=T),1)
+  plot(npx1, npx2, ylim=c(lower, upper),xlim=c(lower, upper), col=sex,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 2", main=paste0(name, "\n",paste0("Pearson: ",round(cor(npx1, npx2, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce.ax, cex.lab=ce.la)
+  abline(a=0, b=1, lty=3)
+  legend("topleft", c("f","m"), fill=c("#F8766D", "#00BFC4"), bty="n")
+  plot(npx1, npx3, ylim=c(lower, upper),xlim=c(lower, upper),col=sex,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 3", main=paste0(name, "\n",paste0("Pearson: ",round(cor(npx1, npx3, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce.ax, cex.lab=ce.la)
+  abline(a=0, b=1, lty=3)
+  plot(npx1, npx4, ylim=c(lower, upper),xlim=c(lower, upper),col=sex,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 4", main=paste0(name, "\n",paste0("Pearson: ",round(cor(npx1, npx4, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce.ax, cex.lab=ce.la)
+  abline(a=0, b=1, lty=3)
+  plot(npx2, npx3, ylim=c(lower, upper),xlim=c(lower, upper),col=sex,pch=19, xlab="log NPX visit 2", ylab="log NPX visit 3", main=paste0(name, "\n",paste0("Pearson: ",round(cor(npx2, npx3, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce.ax, cex.lab=ce.la)
+  abline(a=0, b=1, lty=3)
+  plot(npx2, npx4, ylim=c(lower, upper),xlim=c(lower, upper),col=sex,pch=19, xlab="log NPX visit 2", ylab="log NPX visit 4", main=paste0(name, "\n",paste0("Pearson: ",round(cor(npx2, npx4, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce.ax, cex.lab=ce.la)
+  abline(a=0, b=1, lty=3)
+  plot(npx3, npx4, ylim=c(lower, upper),xlim=c(lower, upper),col=sex,pch=19, xlab="log NPX visit 3", ylab="log NPX visit 4", main=paste0(name, "\n",paste0("Pearson: ",round(cor(npx3, npx4, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce.ax, cex.lab=ce.la)
+  abline(a=0, b=1, lty=3)
+  
+  person.mat<-cbind(npx1, npx2, npx3,npx4)
+  colnames(person.mat)<-c("visit 1","visit 2","visit 3","visit 4")
+  rownames(person.mat)<-olink.visit1.tot$subject_id
+  num.person<-nrow(person.mat)
+  person.cols<-rainbow(num.person)
+  plot(person.mat[1,], col=person.cols[1], type="o", ylim=c(lower, upper), xaxt='n', pch=19,  ylab="log NPX", xlab="", cex.axis=1, cex.lab=1, main=name)
+  axis(side=1, at=c(1,2,3,4), labels=colnames(person.mat), xlab="", cex.axis=1, cex.lab=1)
+  for(k in 2:num.person) {
+    lines(person.mat[k,], col=person.cols[k], type="o", pch=19)
+  }
+  ord<-order(npx1, decreasing=T)
+  subjects.ordered<-olink.subjects[ord]
+  colors.ordered<-person.cols[ord]
+  # plot(1, type="n", axes=FALSE, xlab="", ylab="")
+  plot(1, type="n", axes=FALSE, xlab="", ylab="")
+  legend("topleft",legend=subjects.ordered[1:10], fill=colors.ordered[1:10], bty="n", cex=0.8)
+  legend("topright",legend=subjects.ordered[11:20], fill=colors.ordered[11:20], bty="n", cex=0.8)
+  # legend(2.8,-1,c("group A", "group B"), pch = c(1,2), lty = c(1,2))
+  
+  sd.vec<-apply(person.mat, 1, sd, na.rm=T)
+  sd.ord<-order(sd.vec, decreasing=T)
+  subjects.sd.ordered<-olink.subjects[sd.ord]
+  colors.sd.ordered<-person.cols[sd.ord]
+  plot(person.mat[sd.ord[1],], col=colors.sd.ordered[1], type="o", ylim=c(lower, upper), xaxt='n', pch=19,  ylab="log NPX", xlab="", cex.axis=1, cex.lab=1, main=paste0(name,"\n20 highest standard deviation"))
+  axis(side=1, at=c(1,2,3,4), labels=colnames(person.mat), xlab="", cex.axis=1, cex.lab=1)
+  for(k in 2:20) {
+    lines(person.mat[sd.ord[k],], col=colors.sd.ordered[k], type="o", pch=19)
+  }
+  plot(1, type="n", axes=FALSE, xlab="", ylab="")
+  
+  npx.sd.ord<-order(npx1[sd.ord[1:20]], decreasing=T)
+  
+  legend("topleft",legend=subjects.sd.ordered[npx.sd.ord][1:10], fill=colors.sd.ordered[npx.sd.ord][1:10], bty="n", cex=0.8)
+  legend("topright",legend=subjects.sd.ordered[npx.sd.ord][11:20], fill=colors.sd.ordered[npx.sd.ord][11:20], bty="n", cex=0.8)
+  
+  
+}  
+dev.off()
+
+
+#Jämför nytt och gammalt data
+
+
+pdf(file="proseek.comparison.new.old.data.correlation.pdf", w=13,h=8,useDingbats = FALSE )
+layout(matrix(nrow=2, ncol=4,1:8, byrow=T))
+common.subs<-intersect(olink.visit1.tot$subject_id, olink.visit1.tot.new$subject_id)
+pos1<-which(olink.visit1.tot$subject_id %in% common.subs)
+pos2<-which(olink.visit1.tot.new$subject_id %in% common.subs)
+
+sex.new<-olink.sex.col
+sex.new<-sex.new[pos2]
+extra.pos<-which(common.subs %in% first.panels.extra$subject_id)
+sex.new[extra.pos]<-"blue"
+
+for(i in 1:num.prot) {
+  #for(i in 2:3) {
+  # par(mar=c(5,4,4,1), mgp=c(2.5,1,0))
+  #layout(matrix(c(rep(1,4),rep(2, 4), rep(3,4), rep(4,4),rep(5, 4), rep(6,4),rep(7, 4), rep(8,2), rep(9,4),rep(10,2)),nrow=3, ncol=12,byrow=T))
+  #  layout(matrix(1:12, nrow=2, byrow=T))
+  prot<-olink.proteins[i]
+  prot.pos.1<-which(names(olink.visit1.tot) %in% prot)
+  if(length(prot.pos.1)==0) {
+    print(c(i, prot, "not found"))
+  } else {
+    #  prot.pos.1<-match(prot, names(olink.visit1.tot))
+    prot.pos.2<-match(prot, names(olink.visit1.tot.new))
+    
+    npx1<-unlist(olink.visit1.tot[pos1,prot.pos.1])
+    npx2<-unlist(olink.visit2.tot[pos1,prot.pos.1])
+    npx3<-unlist(olink.visit3.tot[pos1,prot.pos.1])
+    npx4<-unlist(olink.visit4.tot[pos1,prot.pos.1])
+    
+    npx1.new<-unlist(olink.visit1.tot.new[pos2,prot.pos.2])
+    npx2.new<-unlist(olink.visit2.tot.new[pos2,prot.pos.2])
+    npx3.new<-unlist(olink.visit3.tot.new[pos2,prot.pos.2])
+    npx4.new<-unlist(olink.visit4.tot.new[pos2,prot.pos.2])
+    
+    ce.ax<-1
+    ce.la<-1
+    
+    lower<-round(min(c(npx1, npx2, npx3, npx4, npx1.new, npx2.new, npx3.new, npx4.new), na.rm=T), 1)
+    upper<-round(max(c(npx1, npx2, npx3, npx4, npx1.new, npx2.new, npx3.new, npx4.new), na.rm=T),1)
+    plot(npx1, npx2, ylim=c(lower, upper),xlim=c(lower, upper), col=sex.new,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 2", main=paste0(prot, "\n",paste0("Pearson: ",round(cor(npx1, npx2, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce.ax, cex.lab=ce.la)
+    abline(a=0, b=1, lty=3)
+    legend("topleft", c("f","m"), fill=c("#F8766D", "#00BFC4"), bty="n")
+    plot(npx3, npx4, ylim=c(lower, upper),xlim=c(lower, upper),col=sex.new,pch=19, xlab="log NPX visit 3", ylab="log NPX visit 4", main=paste0(prot, "\n",paste0("Pearson: ",round(cor(npx3, npx4, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce.ax, cex.lab=ce.la)
+    abline(a=0, b=1, lty=3)
+    
+    plot(npx1.new, npx2.new, ylim=c(lower, upper),xlim=c(lower, upper), col=sex.new,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 2", main=paste0(prot, " new norm.\n",paste0("Pearson: ",round(cor(npx1.new, npx2.new, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce.ax, cex.lab=ce.la)
+    abline(a=0, b=1, lty=3)
+    plot(npx3.new, npx4.new, ylim=c(lower, upper),xlim=c(lower, upper),col=sex.new,pch=19, xlab="log NPX visit 3", ylab="log NPX visit 4", main=paste0(prot, " new norm.\n",paste0("Pearson: ",round(cor(npx3.new, npx4.new, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce.ax, cex.lab=ce.la)
+    abline(a=0, b=1, lty=3)
+    
+    plot(npx1,npx1.new, ylim=c(lower, upper),xlim=c(lower, upper), col=sex.new,pch=19, xlab="log NPX visit 1", ylab="log NPX visit 1 new", main=paste0(prot, " old vs new norm.\n",paste0("Pearson: ",round(cor(npx1,npx1.new, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce.ax, cex.lab=ce.la)
+    abline(a=0, b=1, lty=3)
+    plot(npx2,npx2.new, ylim=c(lower, upper),xlim=c(lower, upper), col=sex.new,pch=19, xlab="log NPX visit 2", ylab="log NPX visit 2 new", main=paste0(prot, " old vs new norm.\n",paste0("Pearson: ",round(cor(npx2,npx2.new, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce.ax, cex.lab=ce.la)
+    abline(a=0, b=1, lty=3)
+    plot(npx3,npx3.new, ylim=c(lower, upper),xlim=c(lower, upper), col=sex.new,pch=19, xlab="log NPX visit 3", ylab="log NPX visit 3 new", main=paste0(prot, " old vs new norm.\n",paste0("Pearson: ",round(cor(npx3,npx3.new, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce.ax, cex.lab=ce.la)
+    abline(a=0, b=1, lty=3)
+    plot(npx4,npx4.new, ylim=c(lower, upper),xlim=c(lower, upper), col=sex.new,pch=19, xlab="log NPX visit 4", ylab="log NPX visit 4 new", main=paste0(prot, " old vs new norm.\n",paste0("Pearson: ",round(cor(npx4,npx4.new, method="pearson",use = "pairwise.complete.obs"),2))), cex.axis=ce.ax, cex.lab=ce.la)
+    abline(a=0, b=1, lty=3)
+  }
+  
+}  
+dev.off()
+
+
+
+######################### Titta på intra och intervisit variation för varje protein
+protein.intra.inter.sd<-matrix(nrow=num.prot, ncol=2)
+colnames(protein.intra.inter.sd)<-c("mean.intravisit.sd","mean.intraindividual.sd")
+rownames(protein.intra.inter.sd)<-olink.proteins
+
+protein.intra.inter.sd.all.visits<-matrix(nrow=num.prot, ncol=5)
+colnames(protein.intra.inter.sd.all.visits)<-c("sd.visit.1","sd.visit.2","sd.visit.3","sd.visit.4","mean.intraindividual.sd")
+rownames(protein.intra.inter.sd.all.visits)<-olink.proteins
+
+protein.person.sd.mat<-matrix(nrow=num.prot, ncol=length(olink.subjects))
+rownames(protein.person.sd.mat)<-olink.proteins
+colnames(protein.person.sd.mat)<-olink.subjects
+
+for(j in 1:num.prot) {
+  prot.name<-olink.proteins[j]
+  prot.data<-cbind(olink.visit1.tot[,prot.name], olink.visit2.tot[,prot.name], olink.visit3.tot[,prot.name], olink.visit4.tot[,prot.name])
+  names(prot.data)<-c("visit 1","visit 2", "visit 3","visit 4")
+  person.sd<- apply(prot.data, 1, sd, na.rm=T)
+  protein.person.sd.mat[j,]<-person.sd
+  names(person.sd)<-olink.subjects
+  visit.sd<- apply(prot.data, 2, sd, na.rm=T)
+  protein.intra.inter.sd.all.visits[j,]<-c(visit.sd, mean(person.sd, na.rm=T))
+  protein.intra.inter.sd[j,]<-c(mean(visit.sd, na.rm=T), mean(person.sd, na.rm=T))
+}
+
+protein.intra.inter.sd.df<-as.data.frame(protein.intra.inter.sd)
+protein.intra.inter.sd.df$protein<-rownames(protein.intra.inter.sd)
+
+protein.person.sd.df<-as.data.frame(protein.person.sd.mat)
+protein.person.sd.df$protein<-olink.proteins
+protein.person.sd.df$uniprot<-tot.protein.info$`Uniprot ID`
+#protein.person.sd.df$ensg<-uniprot.olink.selected[,"ensg_id"]
+protein.person.sd.df<-select(protein.person.sd.df, protein, uniprot, everything())
+
+pdf(file="new.data.protein.intra.visit.subject.new.pdf",6,6,  useDingbats = F)
+xlim<-0.9
+ylim<-0.35
+p <- ggplot(protein.intra.inter.sd.df, aes(x=mean.intravisit.sd, y=mean.intraindividual.sd)) + geom_point(alpha=0.4)
+#p <- p + geom_point(data=subset(protein.intra.inter.sd.df, mean.intravisit.sd <= xlim & mean.intraindividual.sd <= ylim),aes(mean.intravisit.sd,mean.intraindividual.sd), alpha=0.5)
+p <- p + geom_text_repel(data=subset(protein.intra.inter.sd.df, mean.intravisit.sd > xlim | mean.intraindividual.sd > ylim),aes(mean.intravisit.sd,mean.intraindividual.sd,label=protein))
+p <- p + xlab("variation between individuals")+ ylab("variation within individuals")#+ggtitle("Protein standard deviations")
+p <- p + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(),axis.line = element_line(colour = "black")) + coord_fixed(ratio=2)
+#p <- p + geom_hline(yintercept=ylim, linetype=2) + geom_vline(xintercept=xlim, linetype=2) 
+p
+dev.off()
+
