@@ -112,8 +112,6 @@ calculate_lod_wide = function(data, id_col, blank_ids, exclude_cols) {
 
 # Function to plot LOD distribution
 plot_lod_distribution = function(data, lod_col, protein_id_col) {
-  library(ggplot2)
-  
   ggplot(data, aes(x = .data[[lod_col]])) +
     geom_histogram(binwidth = 0.2, fill = 'skyblue', color = 'black', alpha = 0.7) +
     labs(
@@ -180,31 +178,27 @@ metadata_ht = olink_ht_fil2 %>%
   select(DAid, OlinkID, visit, barcode) %>%
   distinct()  
 
-npx_ht = olink_ht_fil2 %>%
-  select(barcode, UniProt, NPX) %>%
-  pivot_wider(names_from = UniProt, values_from = NPX)
+ht_count = olink_ht_fil2 %>%
+  select(UniProt, NPX, barcode)
 
-# Step 3: Remove Metadata Columns from Count Data (if present)
-count_data_numeric = count_data %>%
-  select(-sampleID)  # Remove sampleID, as it's already in metadata
+npx_ht_wide = reshape(data = ht_count, timevar = 'UniProt', idvar = 'barcode', direction = 'wide')
 
-# Step 4: Ensure Numeric Conversion for UMAP Input
-count_data_numeric = as.data.frame(lapply(count_data_numeric, as.numeric))
+npx_ht = npx_ht_wide %>%
+  select(-barcode)
 
-# Preview results
-cat('Metadata:\n')
-print(head(metadata))
+npx_ht = npx_ht %>%
+  mutate(across(everything(), ~ as.numeric(.)))
 
-cat('\nCount Data for UMAP:\n')
-print(head(count_data_numeric))
+# Remove NA values
+na_npx_ht = sum(is.na(npx_ht))
+cat('Total number of missing values (NA):', na_npx_ht, '\n')
+clean_ht_wide = na.omit(npx_ht)
 
+umapxy_ht = umap(clean_ht_wide, n_neighbors = 15, min_dist = 0.1, metric = 'euclidean')
 
+umap_ht = data.frame(x = umapxy_ht$layout[, 1], y = umapxy_ht$layout[, 2])
 
-
-
-
-
-
+plot_qc_umap(x = umap_ht$x, y = umap_ht$y, method = 'UMAP QC Olink HT', num = nrow(umap_ht))
 
 
 # QC for Olink target

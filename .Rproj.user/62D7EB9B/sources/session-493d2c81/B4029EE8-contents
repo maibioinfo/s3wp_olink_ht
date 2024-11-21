@@ -194,21 +194,11 @@ na_npx_ht = sum(is.na(npx_ht))
 cat('Total number of missing values (NA):', na_npx_ht, '\n')
 clean_ht_wide = na.omit(npx_ht)
 
-
-# npx_ht_df = as.data.frame(do.call(cbind, npx_ht))
-
-umapxy_ht = umap(npx_ht, n_neighbors = 15, min_dist = 0.1, metric = 'euclidean')
+umapxy_ht = umap(clean_ht_wide, n_neighbors = 15, min_dist = 0.1, metric = 'euclidean')
 
 umap_ht = data.frame(x = umapxy_ht$layout[, 1], y = umapxy_ht$layout[, 2])
 
 plot_qc_umap(x = umap_ht$x, y = umap_ht$y, method = 'UMAP QC Olink HT', num = nrow(umap_ht))
-
-
-
-
-
-
-
 
 
 # QC for Olink target
