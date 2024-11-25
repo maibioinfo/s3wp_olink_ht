@@ -9,6 +9,7 @@ library(openxlsx)
 library(ggplot2)
 library(umap)
 library(tidyr)
+library(stringr)
 
 # Functions for QC
 # Function to filter a data frame by a specified column and value
@@ -76,6 +77,12 @@ filter_proteins = function(data, protein_warning_counts) {
     select(-protein_warn_count, -protein_total_count, -protein_warn_percentage)
   return(filtered_data)}
 
+# Function to extract information from a specific column
+extract_info_from_column = function(df, source_column, pattern, new_column_name) {
+  df %>%
+    mutate(!!new_column_name := str_extract(.data[[source_column]], pattern) %>%
+        str_replace('.*?: ', ''))}
+
 # Function to plot LOD distribution
 plot_lod_distribution = function(data, lod_col, lod_type) {
   ggplot(data, aes(x = .data[[lod_col]])) +
@@ -88,6 +95,24 @@ plot_lod_distribution = function(data, lod_col, lod_type) {
     theme_minimal() +
     theme(plot.title = element_text(hjust = 0.5))}
 
+# Function to analyze protein detection with LOD
+analyze_proteins = function(data, detection_percentage = 100) {
+  sample_count = length(unique(data$barcode))
+  detection_threshold = ceiling((detection_percentage / 100) * sample_count)
+  protein_summary = data %>%
+    group_by(UniProt) %>%
+    summarise(total_measurements = n(),
+      detected_in_samples = sum(!is.na(NPX) & !is.na(LOD) & NPX >= LOD),
+      detected = ifelse(detected_in_samples >= detection_threshold, 'Yes', 'No'))
+  higher_than_lod_count = sum(protein_summary$detected == 'Yes')
+  lower_than_lod_count = sum(protein_summary$detected == 'No')
+  total_proteins = nrow(protein_summary)
+  higher_than_lod_percentage = (higher_than_lod_count / total_proteins) * 100
+  lower_than_lod_percentage = (lower_than_lod_count / total_proteins) * 100
+  cat('Number of proteins detected in at least', detection_percentage, '% of samples:', higher_than_lod_count, '(', round(higher_than_lod_percentage, 1), '%)', '\n')
+  cat('Number of proteins detected in less than', detection_percentage, '% of samples:', lower_than_lod_count, '(', round(lower_than_lod_percentage, 1), '%)', '\n')
+  return(protein_summary)}
+
 # Function to plot QC UMAP
 plot_qc_umap = function(x, y, method, num) {
   title = paste0(method, '\nNumber of samples=', num)
@@ -96,33 +121,32 @@ plot_qc_umap = function(x, y, method, num) {
 
 # Run code
 # Read in data
-olink_ht = read.csv('C:/Users/maihu/wellness/data/onlink_ht/olink_ht.csv', header = T)
+olink_ht_raw = read.csv('C:/Users/maihu/wellness/data/onlink_ht/olink_ht.csv', header = T)
 olink_target = read.delim('C:/Users/maihu/wellness/data/olink_target/olink_target.txt', sep = '\t', header = T)
+subject_info = read.xlsx('C:/Users/maihu/wellness/data/onlink_ht/subjects_2024-11-21.xlsx', sheet = 1)
 
 # QC for Olink HT
 # Calculate warning counts
-sample_warning_counts = calculate_sample_warnings(olink_ht)
-protein_warning_counts = calculate_protein_warnings(olink_ht)
+sample_warning_counts = calculate_sample_warnings(olink_ht_raw)
+protein_warning_counts = calculate_protein_warnings(olink_ht_raw)
 
 # Filter samples with > 50% warnings
-olink_ht_fil1 = filter_samples(olink_ht, sample_warning_counts)
+olink_ht_fil1 = filter_samples(olink_ht_raw, sample_warning_counts)
 
 # Filter proteins with > 50% warnings
 olink_ht_fil2 = filter_proteins(olink_ht_fil1, protein_warning_counts)
-
-# Filter measurements with warnings 
-# MISSING: information how to assess measurements to filter warnings
-# (no other columns having WARN/FAIL)
 
 # Select one of the replicate assays
 # Proteins with multiple measurements: GBP1 (UniProt: P32455), MAP2K1 (UniProt: Q02750)
 # Filtered by UniProt 
 gbp1_measurements = filter_by_column_value(olink_ht_fil2, 'UniProt', 'P32455')
 map2k1_measurements = filter_by_column_value(olink_ht_fil2, 'UniProt', 'Q02750')
+
 # There are multiple blocks for these proteins
 # Separate by blocks to see LOD distribution
 divide_df_by_column(gbp1_measurements, 'Block')
 divide_df_by_column(map2k1_measurements, 'Block')
+
 # LOD distribution 
 plot_lod_distribution(data = gbp1_measurements_Block3, lod_col = 'LOD', lod_type = 'GBP1 Block 3') # highest
 plot_lod_distribution(data = gbp1_measurements_Block4, lod_col = 'LOD', lod_type = 'GBP1 Block 4')
@@ -131,65 +155,132 @@ plot_lod_distribution(data = map2k1_measurements_Block3, lod_col = 'LOD', lod_ty
 plot_lod_distribution(data = map2k1_measurements_Block4, lod_col = 'LOD', lod_type = 'MAP2K1 Block 4') # highest
 plot_lod_distribution(data = map2k1_measurements_Block5, lod_col = 'LOD', lod_type = 'MAP2K1 Block 5')
 
+# Filter low LOD assays
+olink_ht = olink_ht_fil2 %>%  filter(!(UniProt == 'P32455' & (Block == 4 | Block == 5)))
+olink_ht = olink_ht %>%  filter(!(UniProt == 'Q02750' & (Block == 3 | Block == 5)))
+
 # LOD distribution plot to assess quality
 plot_lod_distribution(data = olink_ht_fil2, lod_col = 'LOD', lod_type = 'Olink HT')
 
-# Plot QC UMAP
+# Test how many protein detected more than LOD
+olink_ht_fil2 = olink_ht_fil2 %>% mutate(under_LOD = ifelse(NPX < LOD, 'Yes', 'No'))
+
+# Number of protein compared with LOD
+protein_detected_100 = analyze_proteins(olink_ht_fil2)
+protein_detected_80 = analyze_proteins(olink_ht_fil2, detection_percentage = 80)
+
+# Extract subject_id for meta data 
+olink_ht = extract_info_from_column(olink_ht, 'Extra.data', 'subject_id: \\S+', 'subject_id')
+olink_ht = olink_ht %>% mutate(subject_id = str_replace(subject_id, '.*?-', ''))
+
+# Add gender to subjects
+subject_info = subject_info %>% rename(subject_id = Subject)
+subject_info = subject_info %>% mutate(subject_id = as.character(subject_id))
+olink_ht = olink_ht %>% left_join(subject_info %>% select(subject_id, Sex), by = 'subject_id')
+
+# Plot QC 
 # Divide data into meta data and count data 
-metadata_ht = olink_ht_fil2 %>%
-  select(DAid, OlinkID, visit, barcode) %>%
-  distinct()  
+metadata_ht = olink_ht %>% select(DAid, visit, barcode, subject_id, Sex) %>% distinct()  
 
-ht_count = olink_ht_fil2 %>%
-  select(UniProt, NPX, barcode)
+ht_count = olink_ht %>% select(OlinkID, NPX, barcode)
+npx_ht_wide = ht_count %>% pivot_wider(names_from = OlinkID, values_from = 'NPX')
+npx_ht = npx_ht_wide %>% select(-barcode)
+npx_ht_matrix = as.matrix(npx_ht)
 
-npx_ht_wide = reshape(data = ht_count, timevar = 'UniProt', idvar = 'barcode', direction = 'wide')
+# Run the code if data is not yet numeric
+# npx_ht = npx_ht %>% mutate(across(everything(), ~ as.numeric(.)))
 
-npx_ht = npx_ht_wide %>%
-  select(-barcode)
+# Impute missing data
+imputed_olink_ht_npx = impute.knn(npx_ht_matrix)
+imputed_olink_ht = imputed_olink_ht_npx$data
 
-npx_ht = npx_ht %>%
-  mutate(across(everything(), ~ as.numeric(.)))
-
-# Remove NA values
-na_npx_ht = sum(is.na(npx_ht))
-cat('Total number of missing values (NA):', na_npx_ht, '\n')
-clean_ht_wide = na.omit(npx_ht)
-
-umapxy_ht = umap(clean_ht_wide, n_neighbors = 15, min_dist = 0.1, metric = 'euclidean')
-
+# Plot UMAP
+umapxy_ht = umap(imputed_olink_ht, n_neighbors = 15, min_dist = 0.1, metric = 'euclidean')
 umap_ht = data.frame(x = umapxy_ht$layout[, 1], y = umapxy_ht$layout[, 2])
-
-plot_qc_umap(x = umap_ht$x, y = umap_ht$y, method = 'UMAP QC Olink HT', num = nrow(umap_ht))
-
+umap_ht$barcode = npx_ht_wide$barcode
+umap_ht = umap_ht %>% left_join(metadata_ht %>% select(barcode, Sex, visit), by = 'barcode')
+# UMAP colored by visit
+ggplot(umap_ht, aes(x = x, y = y, color = factor(visit))) +
+  geom_point(size = 3, alpha = 0.8) +
+  labs(title = 'UMAP Olink HT colored by Visit',
+    x = 'UMAP1', y = 'UMAP2', color = 'Visit') +
+  scale_color_manual(values = c('#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#e41a1c', '#ffff33')) +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5, size = 16, face = 'bold'),
+    axis.title = element_text(size = 14), legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10))
+# UMAP colored by sex
+ggplot(umap_ht, aes(x = x, y = y, color = Sex)) + geom_point(size = 3, alpha = 0.8) +
+  labs(title = 'UMAP Olink HT colored by Sex', x = 'UMAP1', y = 'UMAP2', color = 'Sex') +
+  scale_color_manual(values = c('f' = '#F8766D', 'm' = '#00BFC4')) + theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = 'bold'),
+    axis.title = element_text(size = 14), legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10))
 
 # QC for Olink target
 # Assumption: done filter warnings (no warning data)
-# NA values (remove, can change to impute if wanted)
-na_target = sum(is.na(olink_target))
-cat('Total number of missing values (NA):', na_target, '\n')
-clean_olink_target = na.omit(olink_target)
+# Divide into meta data and count 
+metadata_target = olink_target %>% select(sampleID, subject_id, visit)
+metadata_target = metadata_target %>% mutate(subject_id = str_replace(subject_id, '.*?-', ''))
+metadata_target = metadata_target %>% left_join(subject_info %>% select(subject_id, Sex), by = 'subject_id')
 
-# LOD distribution plot 
-# lod_table_long = calculate_lod_wide(data = clena_olink_target,
-#   id_col = 'sampleID',
-#   blank_ids = # list of blank ids,
-#   exclude_cols = c('subject_id', 'visit'))
+npx_target = olink_target %>% select(-sampleID, -subject_id, -visit)
 
-# Plot LOD distribution
-# plot_lod_distribution(data = lod_table_long, lod_col = 'lod', protein_id_col = 'protein')
+# Impute missing data
+npx_target_matrix = as.matrix(npx_target)
+imputed_olink_target_npx = impute.knn(npx_target_matrix)
+imputed_olink_target = imputed_olink_target_npx$data
 
-# Plot QC UMAP
-metadata_target = clean_olink_target %>%
-  select(sampleID, subject_id, visit)
-
-npx_target = clean_olink_target %>%
-  select(-sampleID, -subject_id, -visit)
-
-umapxy_target = umap(npx_target, n_neighbors = 15, min_dist = 0.1, metric = 'euclidean')
-
+# Plot UMAP
+umapxy_target = umap(imputed_olink_target, n_neighbors = 15, min_dist = 0.1, metric = 'euclidean')
 umap_target = data.frame(x = umapxy_target$layout[, 1], y = umapxy_target$layout[, 2])
+umap_target = cbind(umap_target, metadata_target)
 
-plot_qc_umap(x = umap_target$x, y = umap_target$y, method = 'UMAP QC Olink Target', num = nrow(umap_target))
+# UMAP colored by visit
+ggplot(umap_target, aes(x = x, y = y, color = factor(visit))) +
+  geom_point(size = 3, alpha = 0.8) +
+  labs(title = 'UMAP Olink Target colored by Visit',
+       x = 'UMAP1', y = 'UMAP2', color = 'Visit') +
+  scale_color_manual(values = c('#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#e41a1c', '#ffff33')) +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5, size = 16, face = 'bold'),
+                          axis.title = element_text(size = 14), legend.title = element_text(size = 12),
+                          legend.text = element_text(size = 10))
+# UMAP colored by sex
+ggplot(umap_target, aes(x = x, y = y, color = Sex)) + geom_point(size = 3, alpha = 0.8) +
+  labs(title = 'UMAP Olink Target colored by Sex', x = 'UMAP1', y = 'UMAP2', color = 'Sex') +
+  scale_color_manual(values = c('f' = '#F8766D', 'm' = '#00BFC4')) + theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = 'bold'),
+        axis.title = element_text(size = 14), legend.title = element_text(size = 12),
+        legend.text = element_text(size = 10))
+
+# Platform comparison
+# Metadata comparison
+metadata_ht_subset = metadata_ht %>% select(subject_id, visit) %>% distinct()
+metadata_target_subset = metadata_target %>% select(subject_id, visit) %>% distinct()
+
+metadata_shared = inner_join(metadata_ht_subset, metadata_target_subset, by = c('subject_id', 'visit'))
+metadata_ht_unique = anti_join(metadata_ht_subset, metadata_target_subset, by = c('subject_id', 'visit'))
+metadata_target_unique = anti_join(metadata_target_subset, metadata_ht_subset, by = c('subject_id', 'visit'))
+
+cat('\nThere are', nrow(metadata_shared), 'shared data between Olink HT and Olink Target data sets.\n')
+cat('There are', nrow(metadata_ht_unique), 'unique data in Olink HT dataset.\n')
+cat('There are', nrow(metadata_target_unique), 'unique data in Olink Target dataset.\n\n')
+
+# Protein detected comparison
+# ERROR: no Uniprot for Target
+protein_shared = intersect(colnames(imputed_olink_ht), colnames(imputed_olink_target))
+protein_ht_unique = setdiff(colnames(imputed_olink_ht), colnames(imputed_olink_target))
+protein_target_unique = setdiff(colnames(imputed_olink_target), colnames(imputed_olink_ht))
+
+cat('\nNumber of proteins detected in both datasets:', length(protein_shared), '\n')
+cat('Number of proteins only detected in Olink HT:', length(protein_ht_unique), '\n')
+cat('Number of proteins only detected in Olink Target:', length(protein_target_unique), '\n\n')
+
+# Not yet correlation
+
+
+
+
+
+
 
 

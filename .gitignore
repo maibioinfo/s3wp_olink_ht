@@ -1,3 +1,4 @@
 data/
 code/*
 !code/s3wp_qc.R
+.Rproj.user
