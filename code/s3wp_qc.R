@@ -113,17 +113,12 @@ analyze_proteins = function(data, detection_percentage = 100) {
   cat('Number of proteins detected in less than', detection_percentage, '% of samples:', lower_than_lod_count, '(', round(lower_than_lod_percentage, 1), '%)', '\n')
   return(protein_summary)}
 
-# Function to plot QC UMAP
-plot_qc_umap = function(x, y, method, num) {
-  title = paste0(method, '\nNumber of samples=', num)
-  plot(x, y, pch = 19, xlab = 'UMAP1', ylab = 'UMAP2', main = title)}
-
-
 # Run code
 # Read in data
 olink_ht_raw = read.csv('C:/Users/maihu/wellness/data/onlink_ht/olink_ht.csv', header = T)
 olink_target = read.delim('C:/Users/maihu/wellness/data/olink_target/olink_target.txt', sep = '\t', header = T)
 subject_info = read.xlsx('C:/Users/maihu/wellness/data/onlink_ht/subjects_2024-11-21.xlsx', sheet = 1)
+target_id = read.csv('C:/Users/maihu/wellness/data/Annoteringsfil_Olink.csv', header = T, sep = ';')
 
 # QC for Olink HT
 # Calculate warning counts
@@ -171,6 +166,8 @@ protein_detected_80 = analyze_proteins(olink_ht_fil2, detection_percentage = 80)
 
 # Extract subject_id for meta data 
 olink_ht = extract_info_from_column(olink_ht, 'Extra.data', 'subject_id: \\S+', 'subject_id')
+# Add sampleID to the column
+olink_ht$sampleID = paste0('WEL_', olink_ht$visit, '_', olink_ht$subject_id)
 olink_ht = olink_ht %>% mutate(subject_id = str_replace(subject_id, '.*?-', ''))
 
 # Add gender to subjects
@@ -180,10 +177,11 @@ olink_ht = olink_ht %>% left_join(subject_info %>% select(subject_id, Sex), by =
 
 # Plot QC 
 # Divide data into meta data and count data 
-metadata_ht = olink_ht %>% select(DAid, visit, barcode, subject_id, Sex) %>% distinct()  
+metadata_ht = olink_ht %>% select(DAid, visit, barcode, subject_id, Sex, sampleID) %>% distinct()  
 
-ht_count = olink_ht %>% select(OlinkID, NPX, barcode)
-npx_ht_wide = ht_count %>% pivot_wider(names_from = OlinkID, values_from = 'NPX')
+# count data go with barcode bcs there are some dup in patient-visit (sampleID)
+ht_count = olink_ht %>% select(UniProt, NPX, barcode)
+npx_ht_wide = ht_count %>% pivot_wider(names_from = UniProt, values_from = 'NPX')
 npx_ht = npx_ht_wide %>% select(-barcode)
 npx_ht_matrix = as.matrix(npx_ht)
 
@@ -193,12 +191,14 @@ npx_ht_matrix = as.matrix(npx_ht)
 # Impute missing data
 imputed_olink_ht_npx = impute.knn(npx_ht_matrix)
 imputed_olink_ht = imputed_olink_ht_npx$data
+imputed_olink_ht = as.data.frame(imputed_olink_ht)
 
 # Plot UMAP
 umapxy_ht = umap(imputed_olink_ht, n_neighbors = 15, min_dist = 0.1, metric = 'euclidean')
 umap_ht = data.frame(x = umapxy_ht$layout[, 1], y = umapxy_ht$layout[, 2])
 umap_ht$barcode = npx_ht_wide$barcode
-umap_ht = umap_ht %>% left_join(metadata_ht %>% select(barcode, Sex, visit), by = 'barcode')
+umap_ht = umap_ht %>% left_join(metadata_ht %>% select(barcode, Sex, visit, subject_id), by = 'barcode')
+
 # UMAP colored by visit
 ggplot(umap_ht, aes(x = x, y = y, color = factor(visit))) +
   geom_point(size = 3, alpha = 0.8) +
@@ -208,6 +208,7 @@ ggplot(umap_ht, aes(x = x, y = y, color = factor(visit))) +
   theme_minimal() + theme(plot.title = element_text(hjust = 0.5, size = 16, face = 'bold'),
     axis.title = element_text(size = 14), legend.title = element_text(size = 12),
     legend.text = element_text(size = 10))
+
 # UMAP colored by sex
 ggplot(umap_ht, aes(x = x, y = y, color = Sex)) + geom_point(size = 3, alpha = 0.8) +
   labs(title = 'UMAP Olink HT colored by Sex', x = 'UMAP1', y = 'UMAP2', color = 'Sex') +
@@ -215,6 +216,17 @@ ggplot(umap_ht, aes(x = x, y = y, color = Sex)) + geom_point(size = 3, alpha = 0
   theme(plot.title = element_text(hjust = 0.5, size = 16, face = 'bold'),
     axis.title = element_text(size = 14), legend.title = element_text(size = 12),
     legend.text = element_text(size = 10))
+
+# UMAP colored by patient (for the consistency of patient profile throughout visits)
+# No legend bcs there are too many
+ggplot(umap_ht, aes(x = x, y = y, color = factor(subject_id))) +
+  geom_point(size = 3, alpha = 0.8, show.legend = F) +
+  labs(title = 'UMAP Olink HT colored by Patient',
+       x = 'UMAP1', y = 'UMAP2', color = 'Visit') +
+  # facet_wrap(~subject_id) + # if you want to divide into sub-plot of different factors
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5, size = 16, face = 'bold'),
+                          axis.title = element_text(size = 14), legend.title = element_text(size = 12),
+                          legend.text = element_text(size = 10))
 
 # QC for Olink target
 # Assumption: done filter warnings (no warning data)
@@ -229,6 +241,7 @@ npx_target = olink_target %>% select(-sampleID, -subject_id, -visit)
 npx_target_matrix = as.matrix(npx_target)
 imputed_olink_target_npx = impute.knn(npx_target_matrix)
 imputed_olink_target = imputed_olink_target_npx$data
+imputed_olink_target = as.data.frame(imputed_olink_target)
 
 # Plot UMAP
 umapxy_target = umap(imputed_olink_target, n_neighbors = 15, min_dist = 0.1, metric = 'euclidean')
@@ -241,9 +254,11 @@ ggplot(umap_target, aes(x = x, y = y, color = factor(visit))) +
   labs(title = 'UMAP Olink Target colored by Visit',
        x = 'UMAP1', y = 'UMAP2', color = 'Visit') +
   scale_color_manual(values = c('#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#e41a1c', '#ffff33')) +
+#  facet_wrap(~visit) +
   theme_minimal() + theme(plot.title = element_text(hjust = 0.5, size = 16, face = 'bold'),
                           axis.title = element_text(size = 14), legend.title = element_text(size = 12),
                           legend.text = element_text(size = 10))
+
 # UMAP colored by sex
 ggplot(umap_target, aes(x = x, y = y, color = Sex)) + geom_point(size = 3, alpha = 0.8) +
   labs(title = 'UMAP Olink Target colored by Sex', x = 'UMAP1', y = 'UMAP2', color = 'Sex') +
@@ -252,21 +267,53 @@ ggplot(umap_target, aes(x = x, y = y, color = Sex)) + geom_point(size = 3, alpha
         axis.title = element_text(size = 14), legend.title = element_text(size = 12),
         legend.text = element_text(size = 10))
 
-# Platform comparison
-# Metadata comparison
-metadata_ht_subset = metadata_ht %>% select(subject_id, visit) %>% distinct()
-metadata_target_subset = metadata_target %>% select(subject_id, visit) %>% distinct()
+# UMAP colored by patient
+ggplot(umap_target, aes(x = x, y = y, color = factor(subject_id))) +
+  geom_point(size = 3, alpha = 0.8, show.legend = F) +
+  labs(title = 'UMAP Olink Target colored by Patient ID',
+       x = 'UMAP1', y = 'UMAP2', color = 'Visit') +
+  # scale_color_manual(values = c('#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#e41a1c', '#ffff33')) +
+  #facet_wrap(~visit) +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5, size = 16, face = 'bold'),
+                          axis.title = element_text(size = 14), legend.title = element_text(size = 12),
+                          legend.text = element_text(size = 10))
 
-metadata_shared = inner_join(metadata_ht_subset, metadata_target_subset, by = c('subject_id', 'visit'))
-metadata_ht_unique = anti_join(metadata_ht_subset, metadata_target_subset, by = c('subject_id', 'visit'))
-metadata_target_unique = anti_join(metadata_target_subset, metadata_ht_subset, by = c('subject_id', 'visit'))
+
+# Platform comparison
+# Replace OID with Uniprot ID where relevant
+uniprot_target = target_id$Uniprot[match(names(imputed_olink_target), target_id$OlinkID)]
+# Only replace OID with single value UniProt
+new_colnames = names(imputed_olink_target)
+for (i in seq_along(new_colnames)) {replacement = uniprot_target[i]
+if (!is.na(replacement) && !grepl(',', replacement)) {
+  new_colnames[i] = replacement}}
+names(imputed_olink_target) = new_colnames
+# If there are OID with no or multiple UniProt IDs, filter them out for manual evaluation 
+problematic_cases = data.frame(OID = names(imputed_olink_target), Uniprot = uniprot_target
+) %>% filter(is.na(Uniprot) | grepl(',', Uniprot))
+# Replace OID with UniProt ID after manual inspection 
+colnames(imputed_olink_target)[colnames(imputed_olink_target) == 'OID00368'] = 'P29459'
+colnames(imputed_olink_target)[colnames(imputed_olink_target) == 'OID00402'] = 'Q8NEV9'
+colnames(imputed_olink_target)[colnames(imputed_olink_target) == 'OID00723'] = 'Q29983'
+colnames(imputed_olink_target)[colnames(imputed_olink_target) == 'OID01492'] = 'Q11128'
+# Extract 1 protein due to its missing Uniprot (cannot find the correct unique Uniprot)
+removed_column = imputed_olink_target[['OID01214']]
+imputed_olink_target = imputed_olink_target[ , !(colnames(imputed_olink_target) %in% 'OID01214')]
+
+
+# Metadata comparison
+metadata_ht_subset = metadata_ht %>% select(sampleID)
+metadata_target_subset = metadata_target %>% select(sampleID)
+
+metadata_shared = inner_join(metadata_ht_subset, metadata_target_subset)
+metadata_ht_unique = anti_join(metadata_ht_subset, metadata_target_subset)
+metadata_target_unique = anti_join(metadata_target_subset, metadata_ht_subset)
 
 cat('\nThere are', nrow(metadata_shared), 'shared data between Olink HT and Olink Target data sets.\n')
 cat('There are', nrow(metadata_ht_unique), 'unique data in Olink HT dataset.\n')
 cat('There are', nrow(metadata_target_unique), 'unique data in Olink Target dataset.\n\n')
 
 # Protein detected comparison
-# ERROR: no Uniprot for Target
 protein_shared = intersect(colnames(imputed_olink_ht), colnames(imputed_olink_target))
 protein_ht_unique = setdiff(colnames(imputed_olink_ht), colnames(imputed_olink_target))
 protein_target_unique = setdiff(colnames(imputed_olink_target), colnames(imputed_olink_ht))
@@ -275,12 +322,49 @@ cat('\nNumber of proteins detected in both datasets:', length(protein_shared), '
 cat('Number of proteins only detected in Olink HT:', length(protein_ht_unique), '\n')
 cat('Number of proteins only detected in Olink Target:', length(protein_target_unique), '\n\n')
 
-# Not yet correlation
 
+# Protein correlation
+# Insert barcode to map
+imputed_olink_ht$barcode = npx_ht_wide$barcode
+imputed_olink_ht$sampleID = metadata_ht$sampleID[match(imputed_olink_ht$barcode, metadata_ht$barcode)]
+imputed_olink_ht = imputed_olink_ht %>% select(-barcode)
 
+imputed_olink_target$sampleID = metadata_target$sampleID
 
+# Filter for shared sampleID and proteins
+imputed_olink_ht_filtered = imputed_olink_ht %>% filter(sampleID %in% metadata_shared$sampleID) %>%
+  select(sampleID, all_of(protein_shared))
+imputed_olink_target_filtered = imputed_olink_target %>% filter(sampleID %in% metadata_shared$sampleID) %>%
+  select(sampleID, all_of(protein_shared))
 
+# Convert to long format to merge
+imputed_olink_ht_long = imputed_olink_ht_filtered %>%
+  pivot_longer(cols = -sampleID, names_to = 'protein_name', values_to = 'npx_ht')
+imputed_olink_target_long = imputed_olink_target_filtered %>%
+  pivot_longer(cols = -sampleID, names_to = 'protein_name', values_to = 'npx_target')
 
+# Merge all data
+correlation = inner_join(imputed_olink_ht_long, imputed_olink_target_long, by = c('sampleID', 'protein_name'))
 
+# Correlation 
+# Protein wise 
+correlation = correlation %>% group_by(protein_name) %>%
+  mutate(correlation = cor(npx_ht, npx_target)) %>% ungroup()
+
+# Choose protein P41439 with highest correlation
+protein_data = correlation[correlation$protein_name == 'P41439', ]
+# Pearson correlation coefficient
+corr_coeff = cor(protein_data$npx_ht, protein_data$npx_target)
+# Plot parameters
+par(mar = c(4, 4, 3, 1), mgp = c(1.5, 0.3, 0), tcl = -0.2, las = 1, cex.axis = 0.8, cex.lab = 0.9)           
+# Scatter plot
+plot(protein_data$npx_ht, protein_data$npx_target,
+     main = bquote(bold("Scatter Plot for Protein P41439")),
+     xlab = "Olink HT", ylab = "Olink Target",
+     pch = 19, col = rgb(70, 130, 180, max = 255, alpha = 100), cex = 1.2, asp = 1, bty = "l") 
+# Trendline
+abline(lm(npx_target ~ npx_ht, data = protein_data), col = "black", lwd = 2, lty = 2)
+# Corr coeff
+mtext(bquote(italic("Correlation Coefficient (r): ") ~ .(round(corr_coeff, 2))), side = 3, line = -0.1, cex = 0.8) 
 
 
