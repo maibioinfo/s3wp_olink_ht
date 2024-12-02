@@ -10,6 +10,7 @@ library(ggplot2)
 library(umap)
 library(tidyr)
 library(stringr)
+library(effectsize)
 
 # Functions for QC
 # Function to filter a data frame by a specified column and value
@@ -359,12 +360,35 @@ corr_coeff = cor(protein_data$npx_ht, protein_data$npx_target)
 par(mar = c(4, 4, 3, 1), mgp = c(1.5, 0.3, 0), tcl = -0.2, las = 1, cex.axis = 0.8, cex.lab = 0.9)           
 # Scatter plot
 plot(protein_data$npx_ht, protein_data$npx_target,
-     main = bquote(bold("Scatter Plot for Protein P41439")),
-     xlab = "Olink HT", ylab = "Olink Target",
-     pch = 19, col = rgb(70, 130, 180, max = 255, alpha = 100), cex = 1.2, asp = 1, bty = "l") 
+     main = bquote(bold('Scatter Plot for Protein P41439')),
+     xlab = 'Olink HT', ylab = 'Olink Target',
+     pch = 19, col = rgb(70, 130, 180, max = 255, alpha = 100), cex = 1.2, asp = 1, bty = 'l') 
 # Trendline
-abline(lm(npx_target ~ npx_ht, data = protein_data), col = "black", lwd = 2, lty = 2)
+abline(lm(npx_target ~ npx_ht, data = protein_data), col = 'black', lwd = 2, lty = 2)
 # Corr coeff
-mtext(bquote(italic("Correlation Coefficient (r): ") ~ .(round(corr_coeff, 2))), side = 3, line = -0.1, cex = 0.8) 
+mtext(bquote(italic('Correlation Coefficient (r): ') ~ .(round(corr_coeff, 2))), side = 3, line = -0.1, cex = 0.8) 
+# Histogram of corr distribution
+# Correlation per protein
+unique_correlations = correlation %>% distinct(protein_name, correlation)
+# Histogram
+hist(unique_correlations$correlation, breaks = 20, col = 'steelblue', border = 'white',
+     main = 'Distribution of protein correlation', xlab = 'Correlation', ylab = 'Frequency')
+
+# Merge data 
+imputed_olink_ht_long = imputed_olink_ht_long %>% 
+  left_join(select(metadata_ht, sampleID, visit, Sex), by = 'sampleID')
+
+# Anova
+anova_result = aov(npx_ht ~ Sex + visit, data = imputed_olink_ht_long)
+summary(anova_result)
+
+# ETA squared
+eta_squared_result = eta_squared(anova_result)
+
+
+
+
+
+
 
 
