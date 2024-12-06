@@ -1,4 +1,5 @@
 data/
 code/*
 !code/s3wp_qc.R
+!code/s3wp_analysis.Rmd
 .Rproj.user
