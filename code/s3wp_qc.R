@@ -114,6 +114,17 @@ analyze_proteins = function(data, detection_percentage = 100) {
   cat('Number of proteins detected in less than', detection_percentage, '% of samples:', lower_than_lod_count, '(', round(lower_than_lod_percentage, 1), '%)', '\n')
   return(protein_summary)}
 
+# Function to create scatter plot for a given protein
+plot_correlation = function(protein_data, protein_name) {
+  corr_coeff = cor(protein_data$npx_ht, protein_data$npx_target)
+  par(mar = c(4, 4, 3, 1), mgp = c(1.5, 0.3, 0), tcl = -0.2, las = 1, cex.axis = 0.8, cex.lab = 0.9)           
+  plot(protein_data$npx_ht, protein_data$npx_target,
+       main = bquote(bold('Scatter Plot for Protein' ~ .(protein_name))),
+       xlab = 'Olink HT', ylab = 'Olink Target',
+       pch = 19, col = rgb(70, 130, 180, max = 255, alpha = 100), cex = 1.2, asp = 1, bty = 'l') 
+  abline(lm(npx_target ~ npx_ht, data = protein_data), col = 'black', lwd = 2, lty = 2)
+  mtext(bquote(italic('Correlation Coefficient (r): ') ~ .(round(corr_coeff, 2))), side = 3, line = -0.1, cex = 0.8)}
+
 # Run code
 # Read in data
 olink_ht_raw = read.csv('C:/Users/maihu/wellness/data/onlink_ht/olink_ht.csv', header = T)
@@ -159,11 +170,43 @@ olink_ht = olink_ht %>%  filter(!(UniProt == 'Q02750' & (Block == 3 | Block == 5
 plot_lod_distribution(data = olink_ht_fil2, lod_col = 'LOD', lod_type = 'Olink HT')
 
 # Test how many protein detected more than LOD
-olink_ht_fil2 = olink_ht_fil2 %>% mutate(under_LOD = ifelse(NPX < LOD, 'Yes', 'No'))
+olink_ht_fil2 = olink_ht_fil2 %>% mutate(under_LOD = ifelse(is.na(NPX) | NPX < LOD, 'Yes', 'No'))
+olink_ht_fil2$under_LOD = as.factor(olink_ht_fil2$under_LOD)
 
 # Number of protein compared with LOD
 protein_detected_100 = analyze_proteins(olink_ht_fil2)
 protein_detected_80 = analyze_proteins(olink_ht_fil2, detection_percentage = 80)
+
+# Per protein, calculate the percentage of samples detected above LOD
+protein_LOD_comparison = olink_ht_fil2 %>% group_by(UniProt) %>% summarise(
+    more_than_LOD = sum(under_LOD == 'No'), total_samples = n(),
+    percent_more_than_LOD = round((more_than_LOD / total_samples) * 100, 2)) %>%
+  select(UniProt, more_than_LOD, percent_more_than_LOD) %>% arrange(desc(percent_more_than_LOD))
+
+# Separate 0% into one bin
+protein_LOD_comparison = protein_LOD_comparison %>%
+  mutate(percent_more_than_LOD = ifelse(percent_more_than_LOD == 0, -1, percent_more_than_LOD))
+# Maximum count to have adaptive y axis
+max_count = max(hist(ifelse(protein_LOD_comparison$percent_more_than_LOD == 0, -1, 
+                            protein_LOD_comparison$percent_more_than_LOD), 
+                     breaks = seq(-5, 105, by = 5), plot = FALSE)$counts)
+# Above LOD percentage histogram
+ggplot(protein_LOD_comparison, aes(x = ifelse(percent_more_than_LOD == 0, -1, percent_more_than_LOD))) +
+  geom_histogram(binwidth = 5, fill = 'skyblue', color = 'black', alpha = 0.7, boundary = 0, closed = 'left') +
+  geom_segment(aes(x = 0, xend = 0, y = 0, yend = max_count), color = 'red', linetype = 'dashed', size = 0.6, inherit.aes = FALSE) +
+  geom_segment(aes(x = 50, xend = 50, y = 0, yend = max_count), color = 'blue', linetype = 'dashed', size = 0.6, inherit.aes = FALSE) +
+  labs(title = 'Distribution of percentage above LOD', x = 'Proteins detected rate compared to LOD', y = 'Frequency') +
+  theme_minimal() + theme(
+    plot.title = element_text(hjust = 0.5, size = 14, margin = margin(b = 10)),
+    axis.title.x = element_text(size = 10, margin = margin(t = 10)), 
+    axis.title.y = element_text(size = 10, margin = margin(r = 10)), 
+    axis.text.x = element_text(size = 9), 
+    axis.text.y = element_text(size = 9),
+    axis.line = element_line(size = 0.5, color = 'black'), 
+    panel.grid = element_blank()) + scale_x_continuous(
+    breaks = c(-1, seq(5, 100, by = 10)), 
+    labels = c('0%', seq(10, 100, by = 10))) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + coord_cartesian(xlim = c(-5, 105)) 
 
 # Extract subject_id for meta data 
 olink_ht = extract_info_from_column(olink_ht, 'Extra.data', 'subject_id: \\S+', 'subject_id')
@@ -178,7 +221,10 @@ olink_ht = olink_ht %>% left_join(subject_info %>% select(subject_id, Sex), by =
 
 # Plot QC 
 # Divide data into meta data and count data 
-metadata_ht = olink_ht %>% select(DAid, visit, barcode, subject_id, Sex, sampleID) %>% distinct()  
+metadata_ht = olink_ht %>% select(DAid, visit, barcode, subject_id, Sex, sampleID) %>% distinct() 
+# Add age column into meta data 
+subject_info$Birth.date = as.Date(subject_info$Birth.date)
+metadata_ht$age = 2015 - as.numeric(format(subject_info$Birth.date[match(metadata_ht$subject_id, subject_info$subject_id)], '%Y'))
 
 # count data go with barcode bcs there are some dup in patient-visit (sampleID)
 ht_count = olink_ht %>% select(UniProt, NPX, barcode)
@@ -218,13 +264,22 @@ ggplot(umap_ht, aes(x = x, y = y, color = Sex)) + geom_point(size = 3, alpha = 0
     axis.title = element_text(size = 14), legend.title = element_text(size = 12),
     legend.text = element_text(size = 10))
 
-# UMAP colored by patient (for the consistency of patient profile throughout visits)
+# UMAP colored by patient 
 # No legend bcs there are too many
 ggplot(umap_ht, aes(x = x, y = y, color = factor(subject_id))) +
   geom_point(size = 3, alpha = 0.8, show.legend = F) +
   labs(title = 'UMAP Olink HT colored by Patient',
        x = 'UMAP1', y = 'UMAP2', color = 'Visit') +
-  # facet_wrap(~subject_id) + # if you want to divide into sub-plot of different factors
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5, size = 16, face = 'bold'),
+                          axis.title = element_text(size = 14), legend.title = element_text(size = 12),
+                          legend.text = element_text(size = 10))
+
+# UMAP colored by patient separately - assess profile consistency over visits
+ggplot(umap_ht, aes(x = x, y = y, color = factor(subject_id))) +
+  geom_point(size = 3, alpha = 0.8, show.legend = F) +
+  labs(title = 'UMAP Olink HT colored by Patient',
+       x = 'UMAP1', y = 'UMAP2', color = 'Visit') +
+  facet_wrap(~subject_id) +
   theme_minimal() + theme(plot.title = element_text(hjust = 0.5, size = 16, face = 'bold'),
                           axis.title = element_text(size = 14), legend.title = element_text(size = 12),
                           legend.text = element_text(size = 10))
@@ -273,12 +328,20 @@ ggplot(umap_target, aes(x = x, y = y, color = factor(subject_id))) +
   geom_point(size = 3, alpha = 0.8, show.legend = F) +
   labs(title = 'UMAP Olink Target colored by Patient ID',
        x = 'UMAP1', y = 'UMAP2', color = 'Visit') +
-  # scale_color_manual(values = c('#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#e41a1c', '#ffff33')) +
   #facet_wrap(~visit) +
   theme_minimal() + theme(plot.title = element_text(hjust = 0.5, size = 16, face = 'bold'),
                           axis.title = element_text(size = 14), legend.title = element_text(size = 12),
                           legend.text = element_text(size = 10))
 
+# UMAP colored by patient separately - assess profile consistency over visits
+ggplot(umap_target, aes(x = x, y = y, color = factor(subject_id))) +
+  geom_point(size = 3, alpha = 0.8, show.legend = F) +
+  labs(title = 'UMAP Olink Target colored by Patient ID',
+       x = 'UMAP1', y = 'UMAP2', color = 'Visit') +
+  facet_wrap(~subject_id) +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5, size = 16, face = 'bold'),
+                          axis.title = element_text(size = 14), legend.title = element_text(size = 12),
+                          legend.text = element_text(size = 10))
 
 # Platform comparison
 # Replace OID with Uniprot ID where relevant
@@ -352,43 +415,77 @@ correlation = inner_join(imputed_olink_ht_long, imputed_olink_target_long, by = 
 correlation = correlation %>% group_by(protein_name) %>%
   mutate(correlation = cor(npx_ht, npx_target)) %>% ungroup()
 
-# Choose protein P41439 with highest correlation
-protein_data = correlation[correlation$protein_name == 'P41439', ]
-# Pearson correlation coefficient
-corr_coeff = cor(protein_data$npx_ht, protein_data$npx_target)
-# Plot parameters
-par(mar = c(4, 4, 3, 1), mgp = c(1.5, 0.3, 0), tcl = -0.2, las = 1, cex.axis = 0.8, cex.lab = 0.9)           
-# Scatter plot
-plot(protein_data$npx_ht, protein_data$npx_target,
-     main = bquote(bold('Scatter Plot for Protein P41439')),
-     xlab = 'Olink HT', ylab = 'Olink Target',
-     pch = 19, col = rgb(70, 130, 180, max = 255, alpha = 100), cex = 1.2, asp = 1, bty = 'l') 
-# Trendline
-abline(lm(npx_target ~ npx_ht, data = protein_data), col = 'black', lwd = 2, lty = 2)
-# Corr coeff
-mtext(bquote(italic('Correlation Coefficient (r): ') ~ .(round(corr_coeff, 2))), side = 3, line = -0.1, cex = 0.8) 
-# Histogram of corr distribution
 # Correlation per protein
-unique_correlations = correlation %>% distinct(protein_name, correlation)
-# Histogram
-hist(unique_correlations$correlation, breaks = 20, col = 'steelblue', border = 'white',
-     main = 'Distribution of protein correlation', xlab = 'Correlation', ylab = 'Frequency')
+unique_correlations = correlation %>% distinct(protein_name, correlation) %>%
+  mutate(corr_category = case_when(correlation <= 0.4 ~ 'Low', correlation > 0.4 & correlation <= 0.7 ~ 'Mid',
+    correlation > 0.7 ~ 'High')) %>% arrange(correlation)
 
+# Count proteins per corr level
+category_counts = unique_correlations %>% group_by(corr_category) %>% summarize(count = n())
+print(paste('Number of proteins with low correlation (0-0.4):', category_counts$count[category_counts$corr_category == 'Low']))
+print(paste('Number of proteins with mid correlation (0.4-0.7):', category_counts$count[category_counts$corr_category == 'Mid']))
+print(paste('Number of proteins with high correlation (0.7-1):', category_counts$count[category_counts$corr_category == 'High']))
+
+# Histogram of corr distribution
+hist(unique_correlations$correlation, breaks = 20, col = '#377eb8', border = 'white',
+     main = 'Distribution of Protein Correlation', xlab = 'Correlation', ylab = 'Frequency')
+# Line separated regions
+abline(v = 0.4, col = 'red', lty = 2, lwd = 2) 
+abline(v = 0.7, col = 'red', lty = 2, lwd = 2) 
+
+# 5 most and least correlated proteins
+lowest_proteins = unique_correlations %>% slice(1:5)
+highest_proteins = unique_correlations %>% slice((n() - 4):n())
+
+# Correlation plot
+for (protein in lowest_proteins$protein_name) {
+  protein_data = correlation[correlation$protein_name == protein, ]
+  plot_correlation(protein_data, protein)}
+for (protein in highest_proteins$protein_name) {
+  protein_data = correlation[correlation$protein_name == protein, ]
+  plot_correlation(protein_data, protein)}
+
+# ANOVA
 # Merge data 
 imputed_olink_ht_long = imputed_olink_ht_long %>% 
-  left_join(select(metadata_ht, sampleID, visit, Sex), by = 'sampleID')
+  left_join(select(metadata_ht, sampleID, visit, Sex, age), by = 'sampleID')
 
+# Do with per protein 
 # Anova
-anova_result = aov(npx_ht ~ Sex + visit, data = imputed_olink_ht_long)
+anova_result = aov(npx_ht ~ Sex + visit + age, data = imputed_olink_ht_long)
 summary(anova_result)
 
 # ETA squared
 eta_squared_result = eta_squared(anova_result)
 
+# Summary: 
+# Sex: anova p-value < 2e-16, eta = 2.9e-4
+# Age: anova p-value < 2e-16, eta = 4.6e-4
+# Visit: anova p-value = 0.9, eta = 5.9e-8
 
 
 
 
 
 
+# Pipeline
+# - general qc
+# - platform comparison - how do assays in target and ht correlate?
+# - umap - how stable is the plasma proteome across visits for target and ht?
+# - ht - how many of the 5.400 proteins do we expect to detect above LOD in a healthy population? if time allows, biological differences
+# - anova - how much of the variation in the plasma proteome is explained by age, sex and visit?
 
+
+# Done
+# protein wise above LOD (percentage per protein) - done
+# Edit hist of corr - done
+# Do a divided umap per patient (facets) - done
+
+# Next
+# PCA for both data sets to identify patterns 
+# Anova per protein
+
+
+# Later
+# then ask full abt the logitudinal analysis together w pathway enrichment
+# anova for target and compare protein (can be later)
