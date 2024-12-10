@@ -11,6 +11,8 @@ library(umap)
 library(tidyr)
 library(stringr)
 library(effectsize)
+library(FactoMineR)
+library(factoextra)
 
 # Functions for QC
 # Function to filter a data frame by a specified column and value
@@ -237,8 +239,8 @@ npx_ht_matrix = as.matrix(npx_ht)
 
 # Impute missing data
 imputed_olink_ht_npx = impute.knn(npx_ht_matrix)
-imputed_olink_ht = imputed_olink_ht_npx$data
-imputed_olink_ht = as.data.frame(imputed_olink_ht)
+imputed_olink_ht_matrix = imputed_olink_ht_npx$data
+imputed_olink_ht = as.data.frame(imputed_olink_ht_matrix)
 
 # Plot UMAP
 umapxy_ht = umap(imputed_olink_ht, n_neighbors = 15, min_dist = 0.1, metric = 'euclidean')
@@ -284,6 +286,26 @@ ggplot(umap_ht, aes(x = x, y = y, color = factor(subject_id))) +
                           axis.title = element_text(size = 14), legend.title = element_text(size = 12),
                           legend.text = element_text(size = 10))
 
+# Plot PCA
+olink_ht_pca = PCA(imputed_olink_ht_matrix, graph = FALSE)
+fviz_pca_ind(olink_ht_pca, geom.ind = 'point', col.ind = recode(metadata_ht$Sex, 'f' = 'female', 'm' = 'male'), 
+             legend.title = 'Gender', title = 'Olink HT PCA, colored by Gender')
+# There was a significant outlier to check on
+pca_coordinates = as.data.frame(olink_ht_pca$ind$coord)
+print(metadata_ht[which(pca_coordinates$Dim.2 < -100), ])
+
+# Meta data of outlier:        
+# DAid visit barcode subject_id Sex     sampleID age
+# 72 DA12242     6  138004       3829   m WEL_6_1-3829  56
+
+# Re-run PCA
+olink_ht_removed = imputed_olink_ht_matrix[-which(pca_coordinates$Dim.2 < -100), ]
+metadata_ht_removed = metadata_ht[-which(pca_coordinates$Dim.2 < -100), ]
+olink_ht_pca_removed = PCA(olink_ht_removed, graph = FALSE)
+fviz_pca_ind(olink_ht_pca_removed, geom.ind = 'point', 
+             col.ind = recode(metadata_ht_removed$Sex, 'f' = 'female', 'm' = 'male'),
+             legend.title = 'Gender', title = 'Olink HT PCA (removed outlier)')
+
 # QC for Olink target
 # Assumption: done filter warnings (no warning data)
 # Divide into meta data and count 
@@ -296,8 +318,8 @@ npx_target = olink_target %>% select(-sampleID, -subject_id, -visit)
 # Impute missing data
 npx_target_matrix = as.matrix(npx_target)
 imputed_olink_target_npx = impute.knn(npx_target_matrix)
-imputed_olink_target = imputed_olink_target_npx$data
-imputed_olink_target = as.data.frame(imputed_olink_target)
+imputed_olink_target_matrix = imputed_olink_target_npx$data
+imputed_olink_target = as.data.frame(imputed_olink_target_matrix)
 
 # Plot UMAP
 umapxy_target = umap(imputed_olink_target, n_neighbors = 15, min_dist = 0.1, metric = 'euclidean')
@@ -342,6 +364,12 @@ ggplot(umap_target, aes(x = x, y = y, color = factor(subject_id))) +
   theme_minimal() + theme(plot.title = element_text(hjust = 0.5, size = 16, face = 'bold'),
                           axis.title = element_text(size = 14), legend.title = element_text(size = 12),
                           legend.text = element_text(size = 10))
+
+# Plot PCA
+olink_target_pca = PCA(imputed_olink_target_matrix, graph = FALSE)
+fviz_pca_ind(olink_target_pca, geom.ind = 'point', 
+             col.ind = recode(metadata_target$Sex, 'f' = 'female', 'm' = 'male'), 
+             legend.title = 'Gender', title = 'Olink Target PCA, colored by Gender')
 
 # Platform comparison
 # Replace OID with Uniprot ID where relevant
@@ -450,18 +478,34 @@ for (protein in highest_proteins$protein_name) {
 imputed_olink_ht_long = imputed_olink_ht_long %>% 
   left_join(select(metadata_ht, sampleID, visit, Sex, age), by = 'sampleID')
 
-# Do with per protein 
 # Anova
 anova_result = aov(npx_ht ~ Sex + visit + age, data = imputed_olink_ht_long)
 summary(anova_result)
 
+# Summary: 
+# Sex: anova p-value < 2e-16, eta = 2.9e-4 --> impactful but on a small part
+# Age: anova p-value < 2e-16, eta = 4.6e-4 --> impactful but on a small part
+# Visit: anova p-value = 0.9, eta = 5.9e-8 --> no impact
+
+# Anova per protein (extract to columns of a df for easy read)
+anova_result_protein = imputed_olink_ht_long %>% group_by(protein_name) %>%
+  summarise(residual_df = summary(aov(npx_ht ~ Sex + visit + age, data = cur_data()))[[1]]['Residuals', 'Df'],
+    Sex_F = summary(aov(npx_ht ~ Sex + visit + age, data = cur_data()))[[1]][['F value']][1],
+    Sex_p = summary(aov(npx_ht ~ Sex + visit + age, data = cur_data()))[[1]][['Pr(>F)']][1],
+    visit_F = summary(aov(npx_ht ~ Sex + visit + age, data = cur_data()))[[1]][['F value']][2],
+    visit_p = summary(aov(npx_ht ~ Sex + visit + age, data = cur_data()))[[1]][['Pr(>F)']][2],
+    age_F = summary(aov(npx_ht ~ Sex + visit + age, data = cur_data()))[[1]][['F value']][3],
+    age_p = summary(aov(npx_ht ~ Sex + visit + age, data = cur_data()))[[1]][['Pr(>F)']][3])
+
 # ETA squared
 eta_squared_result = eta_squared(anova_result)
+# Per protein
+anova_result_protein = anova_result_protein %>% mutate(
+    Sex_eta2 = (Sex_F * 1) / ((Sex_F * 1) + residual_df),
+    visit_eta2 = (visit_F * 1) / ((visit_F * 1) + residual_df),
+    age_eta2 = (age_F * 1) / ((age_F * 1) + residual_df))
 
-# Summary: 
-# Sex: anova p-value < 2e-16, eta = 2.9e-4
-# Age: anova p-value < 2e-16, eta = 4.6e-4
-# Visit: anova p-value = 0.9, eta = 5.9e-8
+
 
 
 
@@ -480,12 +524,10 @@ eta_squared_result = eta_squared(anova_result)
 # protein wise above LOD (percentage per protein) - done
 # Edit hist of corr - done
 # Do a divided umap per patient (facets) - done
-
-# Next
-# PCA for both data sets to identify patterns 
-# Anova per protein
+# PCA for both data sets to identify patterns - done
+# Anova per protein - done
 
 
 # Later
-# then ask full abt the logitudinal analysis together w pathway enrichment
+# longitudinal analysis together w pathway enrichment
 # anova for target and compare protein (can be later)
