@@ -1,7 +1,7 @@
 {
     "installOptions": {
         "installFromRepository": true,
-        "libraryPath": "C:/Users/maihu/wellness/renv/library/R-4.3/x86_64-w64-mingw32",
+        "libraryPath": "C:/Users/maihu/wellness/renv/library/windows/R-4.4/x86_64-w64-mingw32",
         "installDependencies": true
     }
 }
